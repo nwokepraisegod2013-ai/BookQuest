@@ -14,15 +14,17 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const { action } = z
-    .object({ action: z.enum(["approve", "reject"]) })
-    .parse(await req.json());
+  const parsed = z.object({ action: z.enum(["approve", "reject"]) }).safeParse(await req.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const { action } = parsed.data;
 
   await db.book.update({
     where: { id },
     data: {
       status: action === "approve" ? BookStatus.PUBLISHED : BookStatus.REJECTED,
-      featured: action === "approve" ? undefined : false,
+      featured: action === "approve",
     },
   });
 

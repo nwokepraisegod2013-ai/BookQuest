@@ -7,7 +7,7 @@ export default function PrivacyPage() {
       <GlassPanel className="space-y-4 p-8 text-sm text-zinc-400">
         <p>
           We collect account information through Clerk (email, name, profile image) and order data
-          required to fulfill purchases. Payment card details are handled by Stripe and never stored
+          required to fulfill purchases. Payment card details are handled by Paystack and never stored
           on BookQuest servers.
         </p>
         <p>

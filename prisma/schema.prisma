@@ -133,12 +133,13 @@ model CartItem {
 }
 
 model Order {
-  id              String      @id @default(cuid())
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
-  stripeSessionId String?     @unique
-  stripePaymentId String?     @unique
-  status          OrderStatus @default(PENDING)
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+  paystackReference String?     @unique
+  stripeSessionId   String?     @unique
+  stripePaymentId   String?     @unique
+  status            OrderStatus @default(PENDING)
   totalCents      Int
   currency        String      @default("ngn")
   items           OrderItem[]
@@ -200,6 +201,13 @@ model Payout {
 }
 
 model StripeEvent {
+  id        String   @id
+  type      String
+  processed Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model PaystackEvent {
   id        String   @id
   type      String
   processed Boolean  @default(true)

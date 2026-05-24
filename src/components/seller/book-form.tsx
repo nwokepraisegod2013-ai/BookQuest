@@ -16,6 +16,7 @@ export function BookForm({
     subtitle: string | null;
     description: string;
     priceCents: number;
+    salePriceCents: number | null;
     categoryId: string | null;
     coverUrl: string;
   };
@@ -67,6 +68,17 @@ export function BookForm({
             step={1}
             defaultValue={book ? book.priceCents / 100 : ""}
             placeholder="2500"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-zinc-400">Sale price (NGN, optional)</label>
+          <GlassInput
+            name="salePrice"
+            type="number"
+            min={100}
+            step={1}
+            defaultValue={book?.salePriceCents ? book.salePriceCents / 100 : ""}
+            placeholder="1999"
           />
         </div>
         <div>

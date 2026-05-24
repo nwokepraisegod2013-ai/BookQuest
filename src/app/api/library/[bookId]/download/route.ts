@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { openPrivateFileStream, privateFileExists } from "@/lib/storage";
 
 export async function GET(
   _req: Request,
@@ -20,12 +21,26 @@ export async function GET(
     return NextResponse.json({ error: "Not in library" }, { status: 403 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const pdfPath = entry.book.pdfKey;
-
-  if (pdfPath.startsWith("/uploads/")) {
-    return NextResponse.json({ url: `${appUrl}${pdfPath}` });
+  const pdfKey = entry.book.pdfKey;
+  if (!(await privateFileExists(pdfKey))) {
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ url: pdfPath });
+  const stream = openPrivateFileStream(pdfKey);
+  const webStream = new ReadableStream({
+    start(controller) {
+      stream.on("data", (chunk) => controller.enqueue(chunk));
+      stream.on("end", () => controller.close());
+      stream.on("error", (err) => controller.error(err));
+    },
+  });
+
+  const filename = `${entry.book.slug}.pdf`;
+  return new NextResponse(webStream, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
 }

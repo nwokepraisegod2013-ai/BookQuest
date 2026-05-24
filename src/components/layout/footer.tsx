@@ -26,6 +26,13 @@ export function Footer() {
               <li><Link href="/seller" className="hover:text-white">Seller dashboard</Link></li>
             </ul>
           </div>
+          <div>
+            <p className="mb-3 text-sm font-medium text-zinc-300">Help</p>
+            <ul className="space-y-2 text-sm text-zinc-500">
+              <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
+              <li><Link href="/refund" className="hover:text-white">Refunds</Link></li>
+            </ul>
+          </div>
         </div>
         <p className="mt-8 flex flex-wrap items-center justify-center gap-4 border-t border-white/10 pt-6 text-center text-xs text-zinc-600">
           <Link href="/terms" className="hover:text-zinc-400">
@@ -34,7 +41,7 @@ export function Footer() {
           <Link href="/privacy" className="hover:text-zinc-400">
             Privacy
           </Link>
-          <span>© {new Date().getFullYear()} BookQuest · Stripe (NGN)</span>
+          <span>© {new Date().getFullYear()} BookQuest · Paystack (NGN)</span>
         </p>
       </GlassPanel>
     </footer>

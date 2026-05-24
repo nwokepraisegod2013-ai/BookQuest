@@ -2,14 +2,12 @@ import { OrderStatus } from "@prisma/client";
 import { db } from "./db";
 import { getEffectivePriceCents } from "./utils";
 
-export async function fulfillOrderFromSession(sessionId: string) {
-  const existing = await db.order.findUnique({
-    where: { stripeSessionId: sessionId },
-  });
+export async function fulfillOrder(orderId: string) {
+  const existing = await db.order.findUnique({ where: { id: orderId } });
   if (existing?.status === OrderStatus.PAID) return existing;
 
   const order = await db.order.findUnique({
-    where: { stripeSessionId: sessionId },
+    where: { id: orderId },
     include: { items: true, user: true },
   });
 
@@ -66,4 +64,21 @@ export async function fulfillOrderFromSession(sessionId: string) {
     where: { id: order.id },
     include: { items: { include: { book: true } } },
   });
+}
+
+/** @deprecated Stripe — use fulfillOrder */
+export async function fulfillOrderFromSession(sessionId: string) {
+  const order = await db.order.findUnique({
+    where: { stripeSessionId: sessionId },
+  });
+  if (!order) throw new Error("Order not found");
+  return fulfillOrder(order.id);
+}
+
+export async function fulfillOrderByPaystackReference(reference: string) {
+  const order = await db.order.findUnique({
+    where: { paystackReference: reference },
+  });
+  if (!order) throw new Error("Order not found");
+  return fulfillOrder(order.id);
 }

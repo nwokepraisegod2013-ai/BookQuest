@@ -58,7 +58,7 @@ export default async function HomePage() {
       <section className="mx-auto mb-16 grid max-w-7xl gap-4 md:grid-cols-3">
         {[
           { icon: Zap, title: "Instant access", desc: "PDFs in your library seconds after payment" },
-          { icon: Shield, title: "Secure checkout", desc: "Stripe-powered payments in Nigerian Naira" },
+          { icon: Shield, title: "Secure checkout", desc: "Paystack payments in Nigerian Naira" },
           { icon: Sparkles, title: "Curated marketplace", desc: "Verified sellers and reviewed listings" },
         ].map(({ icon: Icon, title, desc }) => (
           <GlassPanel key={title} className="p-6">

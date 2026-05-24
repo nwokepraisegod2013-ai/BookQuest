@@ -45,7 +45,7 @@ export default async function LibraryPage() {
                     Added {new Date(grantedAt).toLocaleDateString()}
                   </p>
                 </div>
-                <DownloadButton bookId={book.id} />
+                <DownloadButton bookId={book.id} slug={book.slug} />
               </div>
             </GlassPanel>
           ))}

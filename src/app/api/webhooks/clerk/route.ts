@@ -71,7 +71,14 @@ export async function POST(req: Request) {
   }
 
   if (evt.type === "user.deleted") {
-    await db.user.deleteMany({ where: { clerkId: evt.data.id } });
+    await db.user.updateMany({
+      where: { clerkId: evt.data.id },
+      data: {
+        email: `deleted-${evt.data.id}@bookquest.removed`,
+        name: "Deleted user",
+        imageUrl: null,
+      },
+    });
   }
 
   return NextResponse.json({ ok: true });

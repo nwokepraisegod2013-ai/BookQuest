@@ -4,16 +4,25 @@ import { useState } from "react";
 import { Download } from "lucide-react";
 import { GlassButton } from "@/components/ui/glass";
 
-export function DownloadButton({ bookId }: { bookId: string }) {
+export function DownloadButton({ bookId, slug }: { bookId: string; slug: string }) {
   const [loading, setLoading] = useState(false);
 
   async function download() {
     setLoading(true);
     try {
       const res = await fetch(`/api/library/${bookId}/download`);
-      const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
-      else alert(data.error ?? "Download unavailable");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert((data as { error?: string }).error ?? "Download unavailable");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } finally {
       setLoading(false);
     }

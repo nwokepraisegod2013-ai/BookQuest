@@ -31,6 +31,7 @@ export default async function EditBookPage({
           subtitle: book.subtitle,
           description: book.description,
           priceCents: book.priceCents,
+          salePriceCents: book.salePriceCents,
           categoryId: book.categoryId,
           coverUrl: book.coverUrl,
         }}

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { OrderStatus } from "@prisma/client";
 import { syncUserFromClerk } from "@/lib/auth";
 import { getCart } from "@/lib/cart";
 import { db } from "@/lib/db";
-import { getStripe, CURRENCY } from "@/lib/stripe";
+import {
+  initializePaystackTransaction,
+  paystackReferenceForOrder,
+  PAYSTACK_CURRENCY,
+} from "@/lib/paystack";
 import { getEffectivePriceCents } from "@/lib/utils";
-import { OrderStatus } from "@prisma/client";
 
 export async function POST() {
   const user = await syncUserFromClerk();
@@ -22,7 +26,7 @@ export async function POST() {
       userId: user.id,
       status: OrderStatus.PENDING,
       totalCents: subtotalCents,
-      currency: CURRENCY,
+      currency: PAYSTACK_CURRENCY.toLowerCase(),
       items: {
         create: items.map((item) => ({
           bookId: item.book.id,
@@ -34,43 +38,13 @@ export async function POST() {
     include: { items: { include: { book: true } } },
   });
 
-  const stripe = getStripe();
+  const reference = paystackReferenceForOrder(order.id);
 
-  let stripeCustomerId = user.stripeCustomerId;
-  if (!stripeCustomerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      name: user.name ?? undefined,
-      metadata: { clerkId: user.clerkId, userId: user.id },
-    });
-    stripeCustomerId = customer.id;
-    await db.user.update({
-      where: { id: user.id },
-      data: { stripeCustomerId },
-    });
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    customer: stripeCustomerId,
-    mode: "payment",
-    currency: CURRENCY,
-    line_items: order.items.map((item) => ({
-      quantity: 1,
-      price_data: {
-        currency: CURRENCY,
-        unit_amount: item.priceCents,
-        product_data: {
-          name: item.book.title,
-          images: item.book.coverUrl.startsWith("http") ? [item.book.coverUrl] : undefined,
-          metadata: {
-            bookId: item.book.id,
-            orderId: order.id,
-          },
-        },
-      },
-    })),
-    success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/cart`,
+  const payment = await initializePaystackTransaction({
+    email: user.email,
+    amountCents: subtotalCents,
+    reference,
+    callbackUrl: `${appUrl}/checkout/success?reference=${reference}`,
     metadata: {
       orderId: order.id,
       userId: user.id,
@@ -79,8 +53,8 @@ export async function POST() {
 
   await db.order.update({
     where: { id: order.id },
-    data: { stripeSessionId: session.id },
+    data: { paystackReference: reference },
   });
 
-  return NextResponse.json({ url: session.url });
+  return NextResponse.json({ url: payment.authorization_url });
 }

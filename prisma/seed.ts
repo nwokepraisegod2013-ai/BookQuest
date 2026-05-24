@@ -1,6 +1,23 @@
+import { copyFile, mkdir } from "fs/promises";
+import path from "path";
 import { PrismaClient, BookStatus, Role } from "@prisma/client";
 
 const prisma = new PrismaClient();
+
+const PRIVATE_PDFS = path.join(process.cwd(), "storage", "private", "pdfs");
+const LEGACY_PUBLIC_PDFS = path.join(process.cwd(), "public", "uploads", "pdfs");
+
+async function ensureDemoPdf(name: string): Promise<string> {
+  await mkdir(PRIVATE_PDFS, { recursive: true });
+  const dest = path.join(PRIVATE_PDFS, name);
+  const legacy = path.join(LEGACY_PUBLIC_PDFS, name);
+  try {
+    await copyFile(legacy, dest);
+  } catch {
+    // demo file may already exist in private storage
+  }
+  return `private:pdfs/${name}`;
+}
 
 async function main() {
   await prisma.platformSettings.upsert({
@@ -56,6 +73,12 @@ async function main() {
     update: { verified: true },
   });
 
+  const [pdfMidnight, pdfBuild, pdfAncestral] = await Promise.all([
+    ensureDemoPdf("demo-midnight.pdf"),
+    ensureDemoPdf("demo-build.pdf"),
+    ensureDemoPdf("demo-ancestral.pdf"),
+  ]);
+
   const books = [
     {
       slug: "midnight-market",
@@ -65,7 +88,7 @@ async function main() {
         "When a street vendor discovers encrypted ledgers in the old Balogun market, she unravels a conspiracy that stretches from Marina boardrooms to the lagoon at midnight.",
       priceCents: 350000,
       coverUrl: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=600&h=800&fit=crop",
-      pdfKey: "/uploads/pdfs/demo-midnight.pdf",
+      pdfKey: pdfMidnight,
       categoryId: fiction.id,
       featured: true,
     },
@@ -74,11 +97,11 @@ async function main() {
       title: "Build in Public — Nigeria Edition",
       subtitle: "From side project to sustainable SaaS",
       description:
-        "Practical playbook for Nigerian founders: pricing in NGN, Stripe setup, community-led growth, and shipping fast with small teams.",
+        "Practical playbook for Nigerian founders: pricing in NGN, Paystack setup, community-led growth, and shipping fast with small teams.",
       priceCents: 450000,
       salePriceCents: 399000,
       coverUrl: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=600&h=800&fit=crop",
-      pdfKey: "/uploads/pdfs/demo-build.pdf",
+      pdfKey: pdfBuild,
       categoryId: business.id,
       featured: true,
     },
@@ -89,7 +112,7 @@ async function main() {
         "Essays on tradition, technology, and identity—how Yoruba philosophy informs modern product design and creative work.",
       priceCents: 280000,
       coverUrl: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600&h=800&fit=crop",
-      pdfKey: "/uploads/pdfs/demo-ancestral.pdf",
+      pdfKey: pdfAncestral,
       categoryId: fiction.id,
       featured: false,
     },
@@ -109,11 +132,12 @@ async function main() {
       update: {
         status: BookStatus.PUBLISHED,
         featured: b.featured,
+        pdfKey: b.pdfKey,
       },
     });
   }
 
-  console.log("Seed complete: categories, demo seller, 3 books");
+  console.log("Seed complete: categories, demo seller, 3 books (private PDFs)");
 }
 
 main()

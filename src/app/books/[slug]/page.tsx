@@ -77,7 +77,7 @@ export default async function BookDetailPage({
             )}
             {book.samplePdfKey && (
               <a
-                href={book.samplePdfKey}
+                href={`/api/books/${book.slug}/sample`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="rounded-xl border border-white/10 px-6 py-3 text-sm text-zinc-300 hover:bg-white/5"

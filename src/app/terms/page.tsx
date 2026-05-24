@@ -11,8 +11,11 @@ export default function TermsPage() {
           seller explicitly allows it.
         </p>
         <p>
-          Payments are processed in Nigerian Naira (NGN) via Stripe. Refunds follow our refund
-          policy and applicable consumer protection laws for digital goods.
+          Payments are processed in Nigerian Naira (NGN) via Paystack. Refunds follow our{" "}
+          <a href="/refund" className="text-blue-400 hover:text-blue-300">
+            refund policy
+          </a>{" "}
+          and applicable consumer protection laws for digital goods.
         </p>
         <p>
           Sellers are responsible for the content they list. BookQuest may remove listings that

@@ -1,59 +1,62 @@
 # BookQuest
 
-Production-ready **PDF book marketplace** for Nigeria. Multiple sellers, admin moderation, Stripe Checkout in **NGN**, and a polished **black glassmorphism** UI.
+Production-ready **PDF book marketplace** for Nigeria. Multiple sellers, admin moderation, **Paystack (NGN)** checkout, and a polished **black glassmorphism** UI.
 
-**Stack:** Next.js 16 · PostgreSQL (Neon) · Clerk · Stripe Nigeria · Vercel
+**Stack:** Next.js 16 · PostgreSQL (Neon) · Clerk · Paystack · Vercel
 
 ## Features
 
-- **Storefront** — browse, search, filter, book detail, reviews
-- **Cart & checkout** — Stripe Checkout in Nigerian Naira
-- **Personal library** — instant PDF access after purchase
+- **Storefront** — browse, search, filter, book detail, reviews, sale prices
+- **Cart & checkout** — Paystack in Nigerian Naira
+- **Personal library** — secure PDF download (not public URLs)
 - **Marketplace sellers** — apply, list books, submit for admin approval
-- **Admin panel** — approve listings, view orders & revenue
-- **Glassmorphism UI** — polished dark theme
+- **Admin panel** — approve listings, verify sellers, orders & revenue
+- **Legal** — terms, privacy, refund policy, contact
 
 ## Quick start
 
-### 1. Install dependencies
+### 1. Install
 
 ```bash
+cd bookquest
 npm install
 ```
 
 ### 2. Environment
 
-Copy `.env.example` to `.env` and fill in:
+```bash
+copy .env.example .env
+```
 
-| Variable | Source |
-|----------|--------|
+| Variable | Where to get it |
+|----------|-----------------|
 | `DATABASE_URL` | [Neon](https://neon.tech) or local Postgres |
-| Clerk keys | [Clerk Dashboard](https://dashboard.clerk.com) |
-| Stripe keys | [Stripe Dashboard](https://dashboard.stripe.com) (Nigeria account, enable NGN) |
-| `ADMIN_EMAILS` | Your email (comma-separated) for admin access |
+| Clerk keys | [Clerk Dashboard](https://dashboard.clerk.com) → API Keys |
+| `CLERK_WEBHOOK_SECRET` | Clerk → Configure → Webhooks → Signing secret |
+| `PAYSTACK_SECRET_KEY` | [Paystack](https://dashboard.paystack.com) → Settings → API Keys |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Same page → Public key |
+| `ADMIN_EMAILS` | Your sign-up email (comma-separated) |
 
 ### 3. Database
 
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate dev
 npm run db:seed
 ```
 
-### 4. Stripe webhooks (local)
+### 4. Paystack webhooks (local)
 
 ```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+# Use ngrok: ngrok http 3000
+# Then in Paystack → Settings → Webhooks → add:
+# https://YOUR-NGROK.ngrok-free.app/api/webhooks/paystack
 ```
 
-Add the webhook signing secret to `STRIPE_WEBHOOK_SECRET`.
+Events: `charge.success`
 
-### 5. Clerk webhook
+### 5. Clerk webhook (optional locally)
 
-In Clerk Dashboard → Webhooks → add endpoint:
-
-`https://your-domain.com/api/webhooks/clerk`
-
-Events: `user.created`, `user.updated`, `user.deleted`
+`https://YOUR-NGROK.ngrok-free.app/api/webhooks/clerk` — events: `user.created`, `user.updated`, `user.deleted`
 
 ### 6. Run
 
@@ -61,34 +64,32 @@ Events: `user.created`, `user.updated`, `user.deleted`
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open http://localhost:3000
 
 ## Deployment (Vercel + Neon)
 
-1. Push to GitHub
-2. Import project in [Vercel](https://vercel.com)
-3. Add all env vars from `.env.example`
-4. Set `DATABASE_URL` from Neon (pooled connection for serverless)
-5. Deploy — run migrations via Vercel build or `npx prisma migrate deploy`
-
-**Stripe Nigeria:** Ensure your Stripe account is activated for Nigeria and that **NGN** is enabled as a presentment currency in Checkout.
+1. Push to GitHub, import in Vercel
+2. Add all env vars from `.env.example`
+3. Use Neon **pooled** `DATABASE_URL`
+4. Set Paystack **live** keys and live webhook URL
+5. For uploads on Vercel, use Blob/S3 (local `storage/private` is ephemeral on serverless)
 
 ## Roles
 
 | Role | Access |
 |------|--------|
 | Customer | Browse, cart, library |
-| Seller | `/seller` dashboard, create listings |
-| Admin | `/admin` — set via `ADMIN_EMAILS` |
+| Seller | `/seller` — create listings |
+| Admin | `/admin` — email in `ADMIN_EMAILS` |
 
 ## Project structure
 
 ```
-src/
-  app/          # Pages & API routes
-  components/   # UI (glass theme, books, cart, admin)
-  lib/          # db, auth, stripe, storage
-prisma/         # Schema & seed
+src/app/          Pages & API routes
+src/components/   Glass UI
+src/lib/          db, auth, paystack, orders, storage
+prisma/           Schema, migrations, seed
+storage/private/  Paid PDFs (not web-accessible)
 ```
 
 ## License

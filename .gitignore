@@ -34,10 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
-# uploaded PDFs and covers (keep folder)
+# uploaded covers (public); paid PDFs live in storage/private
 /public/uploads/**
 !/public/uploads/.gitkeep
 !/public/uploads/**/.gitkeep
+/storage/private/**
+!/storage/private/.gitkeep
 
 # vercel
 .vercel

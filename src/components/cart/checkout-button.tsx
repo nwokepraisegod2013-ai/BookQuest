@@ -20,7 +20,7 @@ export function CheckoutButton() {
 
   return (
     <GlassButton onClick={checkout} disabled={loading} className="px-8 py-3 text-base">
-      {loading ? "Redirecting..." : "Pay with Stripe"}
+      {loading ? "Redirecting..." : "Pay with Paystack"}
     </GlassButton>
   );
 }
