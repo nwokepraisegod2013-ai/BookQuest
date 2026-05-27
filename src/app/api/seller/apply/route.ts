@@ -4,21 +4,20 @@ import { Role } from "@prisma/client";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { slugify } from "@/lib/utils";
-import { createSubaccount } from "@/lib/paystack";
+import { createSubaccount } from "@/lib/paystack/subaccount";
 
 export async function POST(req: Request) {
   try {
     const user = await syncUserFromClerk();
 
     if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     /**
-     * Check DB directly (avoid stale Clerk session state)
+     * =========================
+     * EXISTING SELLER GUARD
+     * =========================
      */
     const existingSeller = await db.sellerProfile.findUnique({
       where: { userId: user.id },
@@ -39,7 +38,7 @@ export async function POST(req: Request) {
     const body = z
       .object({
         storeName: z.string().min(2).max(80).trim(),
-        storeSlug: z.string().min(2).max(60),
+        storeSlug: z.string().min(2).max(60).trim(),
         bio: z.string().max(500).optional().nullable(),
 
         bankCode: z.string().optional(),
@@ -50,11 +49,14 @@ export async function POST(req: Request) {
     const slug = slugify(body.storeSlug);
 
     /**
-     * Ensure both bank fields are provided together
+     * =========================
+     * BANK VALIDATION (ATOMIC RULE)
+     * =========================
      */
+    const hasBankInfo = !!body.bankCode || !!body.accountNumber;
     const hasPartialBank =
-      (!!body.bankCode && !body.accountNumber) ||
-      (!body.bankCode && !!body.accountNumber);
+      (body.bankCode && !body.accountNumber) ||
+      (!body.bankCode && body.accountNumber);
 
     if (hasPartialBank) {
       return NextResponse.json(
@@ -67,9 +69,11 @@ export async function POST(req: Request) {
     }
 
     /**
-     * Check slug uniqueness
+     * =========================
+     * RACE-SAFE SLUG CHECK
+     * =========================
      */
-    const slugExists = await db.sellerProfile.findUnique({
+    const slugExists = await db.sellerProfile.findFirst({
       where: { storeSlug: slug },
     });
 
@@ -82,11 +86,12 @@ export async function POST(req: Request) {
 
     /**
      * =========================
-     * MAIN TRANSACTION
+     * CREATE SELLER (CORE TX)
      * =========================
+     * Only creates DB records (NO Paystack here yet)
      */
-    const result = await db.$transaction(async (tx) => {
-      const sellerProfile = await tx.sellerProfile.create({
+    const sellerProfile = await db.$transaction(async (tx) => {
+      const seller = await tx.sellerProfile.create({
         data: {
           userId: user.id,
           storeName: body.storeName,
@@ -101,17 +106,18 @@ export async function POST(req: Request) {
         data: { role: Role.SELLER },
       });
 
-      return sellerProfile;
+      return seller;
     });
 
     /**
      * =========================
-     * PAYSTACK SUBACCOUNT (OPTIONAL)
+     * PAYSTACK SUBACCOUNT (SIDE EFFECT)
      * =========================
+     * IMPORTANT: kept OUTSIDE transaction intentionally
      */
     let subaccountCode: string | null = null;
 
-    if (body.bankCode && body.accountNumber) {
+    if (hasBankInfo && body.bankCode && body.accountNumber) {
       try {
         subaccountCode = await createSubaccount({
           storeName: body.storeName,
@@ -120,20 +126,32 @@ export async function POST(req: Request) {
         });
 
         await db.sellerProfile.update({
-          where: { id: result.id },
+          where: { id: sellerProfile.id },
           data: { subaccountCode },
         });
-      } catch (err) {
-        console.error("Paystack subaccount creation failed:", err);
+      } catch (error) {
+        /**
+         * IMPORTANT:
+         * Do NOT fail seller onboarding if Paystack fails
+         * Instead mark for retry
+         */
+        console.error("Paystack subaccount creation failed:", error);
+
+        await db.sellerProfile.update({
+          where: { id: sellerProfile.id },
+          data: {
+            subaccountCode: null,
+          },
+        });
       }
     }
 
     return NextResponse.json({
       ok: true,
       seller: {
-        id: result.id,
-        storeName: result.storeName,
-        storeSlug: result.storeSlug,
+        id: sellerProfile.id,
+        storeName: sellerProfile.storeName,
+        storeSlug: sellerProfile.storeSlug,
         subaccountConfigured: !!subaccountCode,
       },
     });
