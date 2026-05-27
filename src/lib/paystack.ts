@@ -18,6 +18,11 @@ export function paystackReferenceForOrder(orderId: string) {
   return `bq_${orderId}`;
 }
 
+/**
+ * =========================
+ * SHARED TYPES
+ * =========================
+ */
 type PaystackResponse<T> = {
   status: boolean;
   message: string;
@@ -129,19 +134,49 @@ export function verifyPaystackWebhookSignature(
 }
 
 /**
+ * =========================
+ * CREATE PAYSTACK SUBACCOUNT
+ * =========================
+ * Used for marketplace sellers
+ */
+export async function createSubaccount(input: {
+  storeName: string;
+  bankCode: string;
+  accountNumber: string;
+  percentageCharge?: number;
+}) {
+  const res = await fetch(`${PAYSTACK_BASE}/subaccount`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getPaystackSecretKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      business_name: input.storeName,
+      settlement_bank: input.bankCode,
+      account_number: input.accountNumber,
+      percentage_charge: input.percentageCharge ?? 0,
+      description: `Subaccount for ${input.storeName}`,
+    }),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok || !json.status) {
+    throw new Error(json.message || "Failed to create Paystack subaccount");
+  }
+
+  return json.data.subaccount_code as string;
+}
+
+/**
  * ===============================
- * 🧠 REFUND TRANSACTION (NEW)
+ * 🧠 REFUND TRANSACTION
  * ===============================
  */
 export async function refundPaystackTransaction(input: {
   transactionReference: string;
-
-  /**
-   * optional partial refund (kobo)
-   * if omitted → full refund
-   */
   amountCents?: number;
-
   reason?: string;
 }) {
   const res = await fetch(`${PAYSTACK_BASE}/refund`, {
@@ -153,16 +188,10 @@ export async function refundPaystackTransaction(input: {
     body: JSON.stringify({
       transaction: input.transactionReference,
 
-      /**
-       * Paystack expects kobo
-       */
       ...(typeof input.amountCents === "number"
         ? { amount: input.amountCents }
         : {}),
 
-      /**
-       * Optional audit note
-       */
       customer_note: input.reason ?? "Refund issued by platform",
     }),
   });
