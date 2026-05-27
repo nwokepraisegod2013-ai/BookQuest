@@ -41,11 +41,6 @@ export async function POST() {
 
   const sellerId = sellerIds[0];
 
-  /**
-   * =========================
-   * 2. FETCH SELLER SUBACCOUNT
-   * =========================
-   */
   const seller = await db.sellerProfile.findUnique({
     where: { id: sellerId },
   });
@@ -62,50 +57,58 @@ export async function POST() {
 
   /**
    * =========================
-   * 3. IDEMPOTENCY LOCK (STEP 10 CORE FIX)
+   * 2. IDEMPOTENCY: REUSE ACTIVE ORDER (CRITICAL)
    * =========================
-   *
-   * Rule:
-   * A user can ONLY have ONE active Paystack reference per pending checkout
    */
-
-  let order = await db.order.findFirst({
+  const existingOrder = await db.order.findFirst({
     where: {
       userId: user.id,
       status: OrderStatus.PENDING,
-      paystackReference: { not: null },
     },
     include: { items: true },
   });
 
   /**
-   * If existing valid pending order exists → reuse it
+   * If order already has Paystack reference → retry initialization safely
    */
-  if (order?.paystackReference) {
-    const payment = await initializePaystackTransaction({
-      email: user.email,
-      amountCents: order.totalCents,
-      reference: order.paystackReference,
-      callbackUrl: `${appUrl}/checkout/success?reference=${order.paystackReference}`,
-      metadata: {
-        orderId: order.id,
-        userId: user.id,
-      },
-      subaccountCode: seller.subaccountCode,
-      transactionChargeCents: Math.floor(order.totalCents * 0.1),
-      bearer: "account",
-    });
+  if (existingOrder?.paystackReference) {
+    try {
+      const payment = await initializePaystackTransaction({
+        email: user.email,
+        amountCents: existingOrder.totalCents,
+        reference: existingOrder.paystackReference,
+        callbackUrl: `${appUrl}/checkout/success?reference=${existingOrder.paystackReference}`,
+        metadata: {
+          orderId: existingOrder.id,
+          userId: user.id,
+        },
+        subaccountCode: seller.subaccountCode,
+        transactionChargeCents: Math.floor(existingOrder.totalCents * 0.1),
+        bearer: "account",
+      });
 
-    return NextResponse.json({
-      url: payment.authorization_url,
-      reference: order.paystackReference,
-      reused: true,
-    });
+      return NextResponse.json({
+        url: payment.authorization_url,
+        reference: existingOrder.paystackReference,
+        reused: true,
+      });
+    } catch (err) {
+      console.error("[PAYSTACK RETRY FAILED]", err);
+
+      return NextResponse.json(
+        {
+          error:
+            "Payment initialization failed. Please try again without losing your order.",
+          reference: existingOrder.paystackReference,
+        },
+        { status: 500 }
+      );
+    }
   }
 
   /**
    * =========================
-   * 4. PLATFORM FEE CALCULATION
+   * 3. PLATFORM FEE
    * =========================
    */
   const platformFeeCents = Math.floor(subtotalCents * 0.1);
@@ -113,61 +116,81 @@ export async function POST() {
 
   /**
    * =========================
-   * 5. CREATE ORDER (ONLY IF NONE EXISTS)
+   * 4. CREATE ORDER (ATOMIC)
    * =========================
    */
-  order = await db.order.create({
-    data: {
-      userId: user.id,
-      status: OrderStatus.PENDING,
-      totalCents: totalAmountCents,
-      currency: PAYSTACK_CURRENCY.toLowerCase(),
-      items: {
-        create: items.map((item) => ({
-          bookId: item.book.id,
-          sellerId: item.book.sellerId,
-          priceCents: item.book.priceCents,
-        })),
+  const order = await db.$transaction(async (tx) => {
+    return tx.order.create({
+      data: {
+        userId: user.id,
+        status: OrderStatus.PENDING,
+        totalCents: totalAmountCents,
+        currency: PAYSTACK_CURRENCY.toLowerCase(),
+        items: {
+          create: items.map((item) => ({
+            bookId: item.book.id,
+            sellerId: item.book.sellerId,
+            priceCents: item.book.priceCents,
+          })),
+        },
       },
-    },
+    });
   });
 
   const reference = paystackReferenceForOrder(order.id);
 
   /**
    * =========================
-   * 6. INIT PAYSTACK TRANSACTION
+   * 5. INIT PAYSTACK (RETRY-SAFE)
    * =========================
    */
-  const payment = await initializePaystackTransaction({
-    email: user.email,
-    amountCents: totalAmountCents,
-    reference,
-    callbackUrl: `${appUrl}/checkout/success?reference=${reference}`,
-    metadata: {
-      orderId: order.id,
-      userId: user.id,
-    },
-    subaccountCode: seller.subaccountCode,
-    transactionChargeCents: platformFeeCents,
-    bearer: "account",
-  });
+  try {
+    const payment = await initializePaystackTransaction({
+      email: user.email,
+      amountCents: totalAmountCents,
+      reference,
+      callbackUrl: `${appUrl}/checkout/success?reference=${reference}`,
+      metadata: {
+        orderId: order.id,
+        userId: user.id,
+      },
+      subaccountCode: seller.subaccountCode,
+      transactionChargeCents: platformFeeCents,
+      bearer: "account",
+    });
 
-  /**
-   * =========================
-   * 7. SAVE REFERENCE (LOCK IT)
-   * =========================
-   */
-  await db.order.update({
-    where: { id: order.id },
-    data: {
-      paystackReference: reference,
-    },
-  });
+    /**
+     * =========================
+     * 6. SAVE REFERENCE ONLY ON SUCCESS
+     * =========================
+     */
+    await db.order.update({
+      where: { id: order.id },
+      data: {
+        paystackReference: reference,
+      },
+    });
 
-  return NextResponse.json({
-    url: payment.authorization_url,
-    reference,
-    reused: false,
-  });
+    return NextResponse.json({
+      url: payment.authorization_url,
+      reference,
+      reused: false,
+    });
+  } catch (err) {
+    /**
+     * IMPORTANT:
+     * DO NOT create a new order on retry.
+     * Keep order in PENDING state for safe retry.
+     */
+    console.error("[PAYSTACK INIT FAILED]", err);
+
+    return NextResponse.json(
+      {
+        error: "Payment initialization failed. You can retry safely.",
+        orderId: order.id,
+        retryable: true,
+      },
+      { status: 500 }
+    );
+  }
 }
