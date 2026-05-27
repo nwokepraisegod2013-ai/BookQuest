@@ -57,27 +57,51 @@ export async function POST() {
     );
   }
 
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
   /**
    * =========================
-   * 3. IDENTITY / IDEMPOTENCY CHECK
+   * 3. IDEMPOTENCY LOCK (STEP 10 CORE FIX)
    * =========================
+   *
+   * Rule:
+   * A user can ONLY have ONE active Paystack reference per pending checkout
    */
-  const existingOrder = await db.order.findFirst({
+
+  let order = await db.order.findFirst({
     where: {
       userId: user.id,
       status: OrderStatus.PENDING,
+      paystackReference: { not: null },
     },
+    include: { items: true },
   });
 
-  if (existingOrder?.paystackReference) {
+  /**
+   * If existing valid pending order exists → reuse it
+   */
+  if (order?.paystackReference) {
+    const payment = await initializePaystackTransaction({
+      email: user.email,
+      amountCents: order.totalCents,
+      reference: order.paystackReference,
+      callbackUrl: `${appUrl}/checkout/success?reference=${order.paystackReference}`,
+      metadata: {
+        orderId: order.id,
+        userId: user.id,
+      },
+      subaccountCode: seller.subaccountCode,
+      transactionChargeCents: Math.floor(order.totalCents * 0.1),
+      bearer: "account",
+    });
+
     return NextResponse.json({
-      url: null,
-      reference: existingOrder.paystackReference,
+      url: payment.authorization_url,
+      reference: order.paystackReference,
+      reused: true,
     });
   }
-
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   /**
    * =========================
@@ -85,19 +109,14 @@ export async function POST() {
    * =========================
    */
   const platformFeeCents = Math.floor(subtotalCents * 0.1);
-
-  /**
-   * IMPORTANT:
-   * Paystack "amount" must include FULL charge
-   */
   const totalAmountCents = subtotalCents + platformFeeCents;
 
   /**
    * =========================
-   * 5. CREATE ORDER
+   * 5. CREATE ORDER (ONLY IF NONE EXISTS)
    * =========================
    */
-  const order = await db.order.create({
+  order = await db.order.create({
     data: {
       userId: user.id,
       status: OrderStatus.PENDING,
@@ -122,21 +141,13 @@ export async function POST() {
    */
   const payment = await initializePaystackTransaction({
     email: user.email,
-
     amountCents: totalAmountCents,
-
     reference,
-
     callbackUrl: `${appUrl}/checkout/success?reference=${reference}`,
-
     metadata: {
       orderId: order.id,
       userId: user.id,
     },
-
-    /**
-     * PAYSTACK MARKETPLACE SPLIT
-     */
     subaccountCode: seller.subaccountCode,
     transactionChargeCents: platformFeeCents,
     bearer: "account",
@@ -144,7 +155,7 @@ export async function POST() {
 
   /**
    * =========================
-   * 7. SAVE REFERENCE
+   * 7. SAVE REFERENCE (LOCK IT)
    * =========================
    */
   await db.order.update({
@@ -156,5 +167,7 @@ export async function POST() {
 
   return NextResponse.json({
     url: payment.authorization_url,
+    reference,
+    reused: false,
   });
 }
