@@ -22,31 +22,28 @@ export async function POST(req: Request) {
   const body = await req.text();
   const signature = (await headers()).get("x-paystack-signature");
 
-  console.log("[WEBHOOK RECEIVED]", { time: new Date().toISOString() });
+  console.log("[WEBHOOK RECEIVED]", {
+    time: new Date().toISOString(),
+  });
 
   /**
    * =========================
-   * 1. VERIFY SIGNATURE
+   * 1. SIGNATURE VERIFY
    * =========================
    */
   if (!verifyPaystackWebhookSignature(body, signature)) {
-    console.log("[WEBHOOK REJECTED] Invalid signature");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid signature" },
+      { status: 400 }
+    );
   }
 
   const event = JSON.parse(body) as PaystackWebhookBody;
   const reference = event.data.reference;
 
-  console.log("[WEBHOOK EVENT]", {
-    event: event.event,
-    reference,
-    status: event.data.status,
-    amount: event.data.amount,
-  });
-
   /**
    * =========================
-   * 2. IDEMPOTENCY (EVENT DEDUPE)
+   * 2. IDEMPOTENCY LOCK
    * =========================
    */
   const eventId = `${event.event}:${reference}`;
@@ -56,7 +53,6 @@ export async function POST(req: Request) {
   });
 
   if (existingEvent) {
-    console.log("[WEBHOOK SKIPPED] Duplicate event", { eventId });
     return NextResponse.json({ received: true });
   }
 
@@ -69,51 +65,44 @@ export async function POST(req: Request) {
 
   /**
    * =========================
-   * 3. FILTER SUCCESS EVENTS ONLY
+   * 3. FILTER ONLY SUCCESS
    * =========================
    */
   if (event.event !== "charge.success" || event.data.status !== "success") {
-    console.log("[WEBHOOK IGNORED] Non-success event");
     return NextResponse.json({ received: true });
   }
 
   /**
    * =========================
-   * 4. FETCH ORDER
+   * 4. FETCH ORDER (SOURCE OF TRUTH)
    * =========================
    */
   const order = await db.order.findUnique({
     where: { paystackReference: reference },
     include: {
-      items: {
-        include: {
-          book: true,
-        },
-      },
+      items: true,
     },
   });
 
   if (!order) {
-    console.log("[WEBHOOK ERROR] Order not found", { reference });
-    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Order not found" },
+      { status: 404 }
+    );
   }
 
   /**
    * =========================
-   * 5. AMOUNT VALIDATION (SECURITY)
+   * 5. AMOUNT VALIDATION
    * =========================
    */
-  const expectedAmount = order.totalCents;
   const receivedAmount = event.data.amount;
 
-  if (Math.abs(expectedAmount - receivedAmount) > 1) {
-    console.error("[WEBHOOK AMOUNT MISMATCH]", {
-      expectedAmount,
-      receivedAmount,
-      reference,
-    });
-
-    return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+  if (Math.abs(order.totalCents - receivedAmount) > 1) {
+    return NextResponse.json(
+      { error: "Amount mismatch" },
+      { status: 400 }
+    );
   }
 
   /**
@@ -122,15 +111,12 @@ export async function POST(req: Request) {
    * =========================
    */
   if (order.status === OrderStatus.PAID) {
-    console.log("[WEBHOOK SKIP] Already processed", {
-      orderId: order.id,
-    });
     return NextResponse.json({ received: true });
   }
 
   /**
    * =========================
-   * 7. UPDATE ORDER STATUS
+   * 7. MARK ORDER AS PAID
    * =========================
    */
   await db.order.update({
@@ -138,46 +124,62 @@ export async function POST(req: Request) {
     data: { status: OrderStatus.PAID },
   });
 
-  console.log("[ORDER MARKED PAID]", { orderId: order.id });
+  console.log("[ORDER PAID]", { orderId: order.id });
 
   /**
    * =========================
-   * 8. 💰 EARNINGS CALCULATION LAYER (NEW)
+   * 8. EARNINGS ENGINE (PRODUCTION SAFE)
    * =========================
    *
-   * This is the CORE marketplace financial logic
+   * IMPORTANT:
+   * We compute from ORDER TOTAL, NOT item price,
+   * to avoid drift or manipulation.
    */
   try {
-    const platformFeePercent = 10;
+    const PLATFORM_FEE_PERCENT = 10;
+
+    const gross = order.totalCents;
+    const platformFee = Math.floor(
+      (gross * PLATFORM_FEE_PERCENT) / 100
+    );
+    const sellerNet = gross - platformFee;
+
+    /**
+     * Group earnings per seller
+     */
+    const sellerMap = new Map<string, number>();
 
     for (const item of order.items) {
+      const current = sellerMap.get(item.sellerId) ?? 0;
+      sellerMap.set(item.sellerId, current + item.priceCents);
+    }
+
+    for (const [sellerId, sellerGross] of sellerMap.entries()) {
       const split = calculateMarketplaceSplit({
-        grossCents: item.priceCents,
-        platformFeePercent,
+        grossCents: sellerGross,
+        platformFeePercent: PLATFORM_FEE_PERCENT,
       });
 
-      console.log("[EARNINGS CALCULATED]", {
+      console.log("[EARNINGS]", {
         orderId: order.id,
-        bookId: item.bookId,
-        sellerId: item.sellerId,
+        sellerId,
         gross: split.grossCents,
         platformFee: split.platformFeeCents,
         sellerEarnings: split.sellerEarningsCents,
       });
 
       /**
-       * OPTIONAL PERSISTENCE HOOK (ENABLE WHEN LEDGER TABLE EXISTS)
-       *
-       * await db.earningLedger.create({
-       *   data: {
-       *     orderId: order.id,
-       *     sellerId: item.sellerId,
-       *     grossCents: split.grossCents,
-       *     feeCents: split.platformFeeCents,
-       *     netCents: split.sellerEarningsCents,
-       *   }
-       * });
+       * OPTIONAL LEDGER (RECOMMENDED)
        */
+      // await db.earningLedger.create({
+      //   data: {
+      //     orderId: order.id,
+      //     sellerId,
+      //     grossCents: split.grossCents,
+      //     feeCents: split.platformFeeCents,
+      //     netCents: split.sellerEarningsCents,
+      //   },
+      // });
     }
   } catch (err) {
     console.error("[EARNINGS ERROR]", err);
@@ -185,7 +187,7 @@ export async function POST(req: Request) {
 
   /**
    * =========================
-   * 9. FULFILL ORDER
+   * 9. FULFILLMENT
    * =========================
    */
   try {
@@ -193,13 +195,9 @@ export async function POST(req: Request) {
 
     console.log("[ORDER FULFILLED]", {
       orderId: order.id,
-      reference,
     });
   } catch (err) {
-    console.error("[FULFILLMENT FAILED]", {
-      orderId: order.id,
-      error: err,
-    });
+    console.error("[FULFILLMENT FAILED]", err);
   }
 
   return NextResponse.json({ received: true });
