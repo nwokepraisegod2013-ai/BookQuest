@@ -2,16 +2,42 @@ import { paystackRequest } from "./client";
 
 /**
  * =========================
- * CREATE SUBACCOUNT
+ * PAYSTACK SUBACCOUNT TYPES
  * =========================
  */
-export async function createSubaccount(input: {
+export type CreateSubaccountInput = {
   storeName: string;
   bankCode: string;
   accountNumber: string;
+
+  /**
+   * Optional percentage charge (Paystack commission on subaccount)
+   * e.g. 0 - 100
+   */
   percentageCharge?: number;
-}) {
-  const res = await paystackRequest<{ subaccount_code: string }>(
+};
+
+type PaystackSubaccountResponse = {
+  subaccount_code: string;
+  business_name: string;
+  settlement_bank: string;
+  account_number: string;
+  percentage_charge: number;
+};
+
+/**
+ * =========================
+ * CREATE SUBACCOUNT
+ * =========================
+ * Used for marketplace seller onboarding
+ *
+ * Returns:
+ *  - ACCT_xxxxx (subaccount code)
+ */
+export async function createSubaccount(
+  input: CreateSubaccountInput
+): Promise<string> {
+  const data = await paystackRequest<PaystackSubaccountResponse>(
     "/subaccount",
     {
       method: "POST",
@@ -20,10 +46,18 @@ export async function createSubaccount(input: {
         settlement_bank: input.bankCode,
         account_number: input.accountNumber,
         percentage_charge: input.percentageCharge ?? 0,
-        description: `Subaccount for ${input.storeName}`,
+
+        /**
+         * Optional but useful for admin tracking
+         */
+        description: `Marketplace seller subaccount: ${input.storeName}`,
       }),
     }
   );
 
-  return res.subaccount_code;
+  if (!data?.subaccount_code) {
+    throw new Error("Paystack did not return a subaccount_code");
+  }
+
+  return data.subaccount_code;
 }
