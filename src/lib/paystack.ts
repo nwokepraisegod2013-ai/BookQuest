@@ -3,6 +3,11 @@ import crypto from "crypto";
 export const PAYSTACK_CURRENCY = "NGN";
 const PAYSTACK_BASE = "https://api.paystack.co";
 
+/**
+ * =========================
+ * CORE CONFIG
+ * =========================
+ */
 export function getPaystackSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key) throw new Error("PAYSTACK_SECRET_KEY is not set");
@@ -21,7 +26,7 @@ type PaystackResponse<T> = {
 
 /**
  * ===============================
- * INITIALIZE TRANSACTION (UPGRADED)
+ * INITIALIZE TRANSACTION
  * ===============================
  */
 export async function initializePaystackTransaction(input: {
@@ -31,20 +36,8 @@ export async function initializePaystackTransaction(input: {
   callbackUrl: string;
   metadata: Record<string, string>;
 
-  /**
-   * 👇 NEW: seller subaccount code (ACCT_xxx)
-   */
   subaccountCode?: string;
-
-  /**
-   * 👇 NEW: platform fee in kobo (e.g. 50000 = ₦500)
-   */
   transactionChargeCents?: number;
-
-  /**
-   * Optional Paystack control
-   * "account" = split from total amount
-   */
   bearer?: "account" | "subaccount";
 }) {
   const res = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
@@ -61,10 +54,9 @@ export async function initializePaystackTransaction(input: {
       callback_url: input.callbackUrl,
       metadata: input.metadata,
 
-      // =========================
-      // 🔥 MARKETPLACE SPLIT LOGIC
-      // =========================
-      ...(input.subaccountCode ? { subaccount: input.subaccountCode } : {}),
+      ...(input.subaccountCode
+        ? { subaccount: input.subaccountCode }
+        : {}),
 
       ...(typeof input.transactionChargeCents === "number"
         ? { transaction_charge: input.transactionChargeCents }
@@ -88,13 +80,17 @@ export async function initializePaystackTransaction(input: {
 }
 
 /**
- * VERIFY TRANSACTION (UNCHANGED)
+ * ===============================
+ * VERIFY TRANSACTION
+ * ===============================
  */
 export async function verifyPaystackTransaction(reference: string) {
   const res = await fetch(
     `${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`,
     {
-      headers: { Authorization: `Bearer ${getPaystackSecretKey()}` },
+      headers: {
+        Authorization: `Bearer ${getPaystackSecretKey()}`,
+      },
     }
   );
 
@@ -114,7 +110,9 @@ export async function verifyPaystackTransaction(reference: string) {
 }
 
 /**
- * WEBHOOK SIGNATURE VERIFICATION (UNCHANGED)
+ * ===============================
+ * WEBHOOK SIGNATURE VERIFY
+ * ===============================
  */
 export function verifyPaystackWebhookSignature(
   body: string,
@@ -128,4 +126,57 @@ export function verifyPaystackWebhookSignature(
     .digest("hex");
 
   return hash === signature;
+}
+
+/**
+ * ===============================
+ * 🧠 REFUND TRANSACTION (NEW)
+ * ===============================
+ */
+export async function refundPaystackTransaction(input: {
+  transactionReference: string;
+
+  /**
+   * optional partial refund (kobo)
+   * if omitted → full refund
+   */
+  amountCents?: number;
+
+  reason?: string;
+}) {
+  const res = await fetch(`${PAYSTACK_BASE}/refund`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getPaystackSecretKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transaction: input.transactionReference,
+
+      /**
+       * Paystack expects kobo
+       */
+      ...(typeof input.amountCents === "number"
+        ? { amount: input.amountCents }
+        : {}),
+
+      /**
+       * Optional audit note
+       */
+      customer_note: input.reason ?? "Refund issued by platform",
+    }),
+  });
+
+  const json = (await res.json()) as PaystackResponse<{
+    id: number;
+    status: string;
+    transaction: string;
+    amount: number;
+  }>;
+
+  if (!res.ok || !json.status) {
+    throw new Error(json.message || "Refund failed");
+  }
+
+  return json.data;
 }
