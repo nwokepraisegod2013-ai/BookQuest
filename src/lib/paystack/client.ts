@@ -16,26 +16,41 @@ export function getPaystackSecretKey(): string {
 
 /**
  * =========================
- * GENERIC PAYSTACK REQUEST
+ * SAFE PAYSTACK REQUEST WRAPPER
  * =========================
+ * - Handles network errors
+ * - Validates Paystack response shape
+ * - Prevents silent runtime failures
  */
 export async function paystackRequest<T>(
   path: string,
-  options: RequestInit
+  options: RequestInit = {}
 ): Promise<T> {
   const res = await fetch(`${PAYSTACK_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${getPaystackSecretKey()}`,
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(options.headers ?? {}),
     },
   });
 
-  const json = await res.json();
+  let json: any;
 
-  if (!res.ok || !json.status) {
-    throw new Error(json.message || `Paystack request failed: ${path}`);
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error(`Paystack returned invalid JSON for ${path}`);
+  }
+
+  /**
+   * Paystack always uses:
+   * status: boolean
+   * message: string
+   * data: object
+   */
+  if (!res.ok || json?.status !== true) {
+    throw new Error(json?.message || `Paystack request failed: ${path}`);
   }
 
   return json.data as T;
