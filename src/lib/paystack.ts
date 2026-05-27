@@ -8,13 +8,13 @@ const PAYSTACK_BASE = "https://api.paystack.co";
  * CORE CONFIG
  * =========================
  */
-export function getPaystackSecretKey() {
+export function getPaystackSecretKey(): string {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key) throw new Error("PAYSTACK_SECRET_KEY is not set");
   return key;
 }
 
-export function paystackReferenceForOrder(orderId: string) {
+export function paystackReferenceForOrder(orderId: string): string {
   return `bq_${orderId}`;
 }
 
@@ -30,13 +30,40 @@ type PaystackResponse<T> = {
 };
 
 /**
- * ===============================
+ * =========================
+ * INTERNAL FETCH WRAPPER
+ * =========================
+ */
+async function paystackRequest<T>(
+  path: string,
+  options: RequestInit
+): Promise<T> {
+  const res = await fetch(`${PAYSTACK_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${getPaystackSecretKey()}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const json = (await res.json()) as PaystackResponse<T>;
+
+  if (!res.ok || !json.status) {
+    throw new Error(json.message || `Paystack request failed: ${path}`);
+  }
+
+  return json.data;
+}
+
+/**
+ * =========================
  * INITIALIZE TRANSACTION
- * ===============================
+ * =========================
  */
 export async function initializePaystackTransaction(input: {
   email: string;
-  amountCents: number;
+  amountCents: number; // kobo
   reference: string;
   callbackUrl: string;
   metadata: Record<string, string>;
@@ -45,12 +72,12 @@ export async function initializePaystackTransaction(input: {
   transactionChargeCents?: number;
   bearer?: "account" | "subaccount";
 }) {
-  const res = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
+  return paystackRequest<{
+    authorization_url: string;
+    access_code: string;
+    reference: string;
+  }>("/transaction/initialize", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${getPaystackSecretKey()}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       email: input.email,
       amount: input.amountCents,
@@ -70,59 +97,34 @@ export async function initializePaystackTransaction(input: {
       bearer: input.bearer ?? "account",
     }),
   });
-
-  const json = (await res.json()) as PaystackResponse<{
-    authorization_url: string;
-    access_code: string;
-    reference: string;
-  }>;
-
-  if (!res.ok || !json.status) {
-    throw new Error(json.message || "Paystack initialize failed");
-  }
-
-  return json.data;
 }
 
 /**
- * ===============================
+ * =========================
  * VERIFY TRANSACTION
- * ===============================
+ * =========================
  */
 export async function verifyPaystackTransaction(reference: string) {
-  const res = await fetch(
-    `${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${getPaystackSecretKey()}`,
-      },
-    }
-  );
-
-  const json = (await res.json()) as PaystackResponse<{
+  return paystackRequest<{
     status: string;
     reference: string;
     amount: number;
     currency: string;
     metadata?: { orderId?: string; userId?: string };
-  }>;
-
-  if (!res.ok || !json.status) {
-    throw new Error(json.message || "Paystack verify failed");
-  }
-
-  return json.data;
+  }>(`/transaction/verify/${encodeURIComponent(reference)}`, {
+    method: "GET",
+  });
 }
 
 /**
- * ===============================
+ * =========================
  * WEBHOOK SIGNATURE VERIFY
- * ===============================
+ * =========================
  */
 export function verifyPaystackWebhookSignature(
   body: string,
   signature: string | null
-) {
+): boolean {
   if (!signature) return false;
 
   const hash = crypto
@@ -137,7 +139,7 @@ export function verifyPaystackWebhookSignature(
  * =========================
  * CREATE PAYSTACK SUBACCOUNT
  * =========================
- * Used for marketplace sellers
+ * Used for marketplace sellers onboarding
  */
 export async function createSubaccount(input: {
   storeName: string;
@@ -145,12 +147,8 @@ export async function createSubaccount(input: {
   accountNumber: string;
   percentageCharge?: number;
 }) {
-  const res = await fetch(`${PAYSTACK_BASE}/subaccount`, {
+  return paystackRequest<{ subaccount_code: string }>("/subaccount", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${getPaystackSecretKey()}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       business_name: input.storeName,
       settlement_bank: input.bankCode,
@@ -158,33 +156,26 @@ export async function createSubaccount(input: {
       percentage_charge: input.percentageCharge ?? 0,
       description: `Subaccount for ${input.storeName}`,
     }),
-  });
-
-  const json = await res.json();
-
-  if (!res.ok || !json.status) {
-    throw new Error(json.message || "Failed to create Paystack subaccount");
-  }
-
-  return json.data.subaccount_code as string;
+  }).then((data) => data.subaccount_code);
 }
 
 /**
- * ===============================
- * 🧠 REFUND TRANSACTION
- * ===============================
+ * =========================
+ * REFUND TRANSACTION
+ * =========================
  */
 export async function refundPaystackTransaction(input: {
   transactionReference: string;
-  amountCents?: number;
+  amountCents?: number; // kobo
   reason?: string;
 }) {
-  const res = await fetch(`${PAYSTACK_BASE}/refund`, {
+  return paystackRequest<{
+    id: number;
+    status: string;
+    transaction: string;
+    amount: number;
+  }>("/refund", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${getPaystackSecretKey()}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       transaction: input.transactionReference,
 
@@ -195,17 +186,4 @@ export async function refundPaystackTransaction(input: {
       customer_note: input.reason ?? "Refund issued by platform",
     }),
   });
-
-  const json = (await res.json()) as PaystackResponse<{
-    id: number;
-    status: string;
-    transaction: string;
-    amount: number;
-  }>;
-
-  if (!res.ok || !json.status) {
-    throw new Error(json.message || "Refund failed");
-  }
-
-  return json.data;
 }
