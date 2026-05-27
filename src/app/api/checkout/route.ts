@@ -12,13 +12,26 @@ import {
 export async function POST() {
   const user = await syncUserFromClerk();
 
+  console.log("[PAYMENT INIT START]", {
+    userId: user?.id,
+    time: new Date().toISOString(),
+  });
+
   if (!user) {
+    console.log("[PAYMENT FAILED] Unauthorized access attempt");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { items, subtotalCents } = await getCart(user.id);
 
+  console.log("[CART FETCHED]", {
+    userId: user.id,
+    itemsCount: items.length,
+    subtotalCents,
+  });
+
   if (!items.length) {
+    console.log("[PAYMENT STOPPED] Empty cart");
     return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
   }
 
@@ -30,6 +43,10 @@ export async function POST() {
   const sellerIds = [...new Set(items.map((i) => i.book.sellerId))];
 
   if (sellerIds.length > 1) {
+    console.log("[PAYMENT BLOCKED] Multi-seller cart detected", {
+      sellerIds,
+    });
+
     return NextResponse.json(
       {
         error:
@@ -41,11 +58,20 @@ export async function POST() {
 
   const sellerId = sellerIds[0];
 
+  /**
+   * =========================
+   * 2. FETCH SELLER SUBACCOUNT
+   * =========================
+   */
   const seller = await db.sellerProfile.findUnique({
     where: { id: sellerId },
   });
 
   if (!seller?.subaccountCode) {
+    console.log("[PAYMENT BLOCKED] Seller missing subaccount", {
+      sellerId,
+    });
+
     return NextResponse.json(
       { error: "Seller payout not configured" },
       { status: 400 }
@@ -57,50 +83,56 @@ export async function POST() {
 
   /**
    * =========================
-   * 2. IDEMPOTENCY: REUSE ACTIVE ORDER (CRITICAL)
+   * 3. IDEMPOTENCY LOCK (REUSE CHECK)
    * =========================
    */
-  const existingOrder = await db.order.findFirst({
+  let order = await db.order.findFirst({
     where: {
       userId: user.id,
       status: OrderStatus.PENDING,
+      paystackReference: { not: null },
     },
     include: { items: true },
   });
 
-  /**
-   * If order already has Paystack reference → retry initialization safely
-   */
-  if (existingOrder?.paystackReference) {
+  if (order?.paystackReference) {
+    console.log("[PAYMENT REUSE] Existing order reused", {
+      orderId: order.id,
+      reference: order.paystackReference,
+    });
+
     try {
       const payment = await initializePaystackTransaction({
         email: user.email,
-        amountCents: existingOrder.totalCents,
-        reference: existingOrder.paystackReference,
-        callbackUrl: `${appUrl}/checkout/success?reference=${existingOrder.paystackReference}`,
+        amountCents: order.totalCents,
+        reference: order.paystackReference,
+        callbackUrl: `${appUrl}/checkout/success?reference=${order.paystackReference}`,
         metadata: {
-          orderId: existingOrder.id,
+          orderId: order.id,
           userId: user.id,
         },
         subaccountCode: seller.subaccountCode,
-        transactionChargeCents: Math.floor(existingOrder.totalCents * 0.1),
+        transactionChargeCents: Math.floor(order.totalCents * 0.1),
         bearer: "account",
+      });
+
+      console.log("[PAYSTACK INIT SUCCESS - REUSE]", {
+        orderId: order.id,
       });
 
       return NextResponse.json({
         url: payment.authorization_url,
-        reference: existingOrder.paystackReference,
+        reference: order.paystackReference,
         reused: true,
       });
     } catch (err) {
-      console.error("[PAYSTACK RETRY FAILED]", err);
+      console.error("[PAYSTACK REUSE INIT FAILED]", {
+        orderId: order.id,
+        error: err,
+      });
 
       return NextResponse.json(
-        {
-          error:
-            "Payment initialization failed. Please try again without losing your order.",
-          reference: existingOrder.paystackReference,
-        },
+        { error: "Payment retry failed. Please try again." },
         { status: 500 }
       );
     }
@@ -108,40 +140,49 @@ export async function POST() {
 
   /**
    * =========================
-   * 3. PLATFORM FEE
+   * 4. PLATFORM FEE CALCULATION
    * =========================
    */
   const platformFeeCents = Math.floor(subtotalCents * 0.1);
   const totalAmountCents = subtotalCents + platformFeeCents;
 
+  console.log("[FEE CALCULATED]", {
+    subtotalCents,
+    platformFeeCents,
+    totalAmountCents,
+  });
+
   /**
    * =========================
-   * 4. CREATE ORDER (ATOMIC)
+   * 5. CREATE ORDER
    * =========================
    */
-  const order = await db.$transaction(async (tx) => {
-    return tx.order.create({
-      data: {
-        userId: user.id,
-        status: OrderStatus.PENDING,
-        totalCents: totalAmountCents,
-        currency: PAYSTACK_CURRENCY.toLowerCase(),
-        items: {
-          create: items.map((item) => ({
-            bookId: item.book.id,
-            sellerId: item.book.sellerId,
-            priceCents: item.book.priceCents,
-          })),
-        },
+  order = await db.order.create({
+    data: {
+      userId: user.id,
+      status: OrderStatus.PENDING,
+      totalCents: totalAmountCents,
+      currency: PAYSTACK_CURRENCY.toLowerCase(),
+      items: {
+        create: items.map((item) => ({
+          bookId: item.book.id,
+          sellerId: item.book.sellerId,
+          priceCents: item.book.priceCents,
+        })),
       },
-    });
+    },
+  });
+
+  console.log("[ORDER CREATED]", {
+    orderId: order.id,
+    userId: user.id,
   });
 
   const reference = paystackReferenceForOrder(order.id);
 
   /**
    * =========================
-   * 5. INIT PAYSTACK (RETRY-SAFE)
+   * 6. INIT PAYSTACK TRANSACTION
    * =========================
    */
   try {
@@ -159,9 +200,14 @@ export async function POST() {
       bearer: "account",
     });
 
+    console.log("[PAYSTACK INIT SUCCESS]", {
+      orderId: order.id,
+      reference,
+    });
+
     /**
      * =========================
-     * 6. SAVE REFERENCE ONLY ON SUCCESS
+     * 7. SAVE REFERENCE
      * =========================
      */
     await db.order.update({
@@ -171,22 +217,25 @@ export async function POST() {
       },
     });
 
+    console.log("[ORDER UPDATED WITH REFERENCE]", {
+      orderId: order.id,
+      reference,
+    });
+
     return NextResponse.json({
       url: payment.authorization_url,
       reference,
       reused: false,
     });
   } catch (err) {
-    /**
-     * IMPORTANT:
-     * DO NOT create a new order on retry.
-     * Keep order in PENDING state for safe retry.
-     */
-    console.error("[PAYSTACK INIT FAILED]", err);
+    console.error("[PAYSTACK INIT FAILED]", {
+      orderId: order.id,
+      error: err,
+    });
 
     return NextResponse.json(
       {
-        error: "Payment initialization failed. You can retry safely.",
+        error: "Payment initialization failed. Please retry.",
         orderId: order.id,
         retryable: true,
       },
