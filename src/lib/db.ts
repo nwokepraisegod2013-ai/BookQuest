@@ -13,7 +13,7 @@ const globalForPrisma = globalThis as PrismaGlobal;
 
 /**
  * =========================
- * PRISMA CLIENT INSTANCE
+ * PRISMA SINGLETON
  * =========================
  */
 export const db =
@@ -31,7 +31,7 @@ export const db =
 
 /**
  * =========================
- * DEV OBSERVABILITY LAYER
+ * DEV OBSERVABILITY
  * =========================
  */
 if (process.env.NODE_ENV === "development") {
@@ -51,19 +51,23 @@ if (process.env.NODE_ENV === "development") {
 
 /**
  * =========================
- * 🔥 FINANCIAL SAFETY MIDDLEWARE
+ * FINANCIAL STATE OBSERVER
  * =========================
- * Tracks critical order state transitions (PAID → REFUNDED)
+ * Only logs transitions (DO NOT compute earnings here)
  */
 db.$use(async (params, next) => {
   const result = await next(params);
 
   try {
-    /**
-     * Track ORDER status changes
-     */
     if (params.model === "Order" && params.action === "update") {
       const data = params.args?.data;
+
+      if (data?.status === OrderStatus.PAID) {
+        console.log("💰 ORDER COMPLETED:", {
+          orderId: params.args.where?.id,
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       if (data?.status === OrderStatus.REFUNDED) {
         console.log("💸 ORDER REFUNDED:", {
@@ -71,25 +75,47 @@ db.$use(async (params, next) => {
           timestamp: new Date().toISOString(),
         });
       }
-
-      if (data?.status === OrderStatus.PAID) {
-        console.log("💰 ORDER PAID:", {
-          orderId: params.args.where?.id,
-        });
-      }
     }
   } catch (err) {
-    console.error("⚠️ Prisma middleware error:", err);
+    console.error("⚠️ Financial middleware error:", err);
   }
 
   return result;
 });
 
 /**
- * =========================
- * 🔐 SAFE REFUND AUDIT HELPER
- * =========================
- * Centralized way to record refund actions
+ * =====================================================
+ * 📊 EARNINGS FOUNDATION (IMPORTANT FOR STEP 15+ SYSTEM)
+ * =====================================================
+ */
+
+/**
+ * Calculate marketplace split consistently
+ * This ensures EVERY part of system uses same logic
+ */
+export function calculateMarketplaceSplit(input: {
+  grossCents: number;
+  platformFeePercent?: number; // default 10%
+}) {
+  const feePercent = input.platformFeePercent ?? 10;
+
+  const platformFeeCents = Math.floor(
+    (input.grossCents * feePercent) / 100
+  );
+
+  const sellerEarningsCents = input.grossCents - platformFeeCents;
+
+  return {
+    grossCents: input.grossCents,
+    platformFeeCents,
+    sellerEarningsCents,
+  };
+}
+
+/**
+ * =====================================================
+ * 🧾 REFUND AUDIT LOGGER (SAFE + EXTENSIBLE)
+ * =====================================================
  */
 export async function recordRefundEvent(input: {
   orderId: string;
@@ -101,14 +127,13 @@ export async function recordRefundEvent(input: {
     data: {
       id: `refund:${input.orderId}:${Date.now()}`,
       type: "refund.success",
-      // If your schema supports metadata, you can extend it later
     },
   });
 }
 
 /**
  * =========================
- * GRACEFUL SHUTDOWN SAFETY
+ * GRACEFUL SHUTDOWN
  * =========================
  */
 process.on("beforeExit", async () => {
