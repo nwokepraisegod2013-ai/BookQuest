@@ -18,13 +18,13 @@ export async function POST() {
 
   const { items, subtotalCents } = await getCart(user.id);
 
-  if (items.length === 0) {
+  if (!items.length) {
     return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
   }
 
   /**
    * =========================
-   * 1. VALIDATE SINGLE SELLER
+   * 1. SINGLE SELLER VALIDATION
    * =========================
    */
   const sellerIds = [...new Set(items.map((i) => i.book.sellerId))];
@@ -33,7 +33,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          "Multiple sellers in one cart is not supported with Paystack split mode. Please checkout items separately.",
+          "Multiple sellers in one checkout is not supported in current Paystack split setup.",
       },
       { status: 400 }
     );
@@ -46,7 +46,7 @@ export async function POST() {
    * 2. FETCH SELLER SUBACCOUNT
    * =========================
    */
-  const seller = await db.seller.findUnique({
+  const seller = await db.sellerProfile.findUnique({
     where: { id: sellerId },
   });
 
@@ -57,19 +57,51 @@ export async function POST() {
     );
   }
 
+  /**
+   * =========================
+   * 3. IDENTITY / IDEMPOTENCY CHECK
+   * =========================
+   */
+  const existingOrder = await db.order.findFirst({
+    where: {
+      userId: user.id,
+      status: OrderStatus.PENDING,
+    },
+  });
+
+  if (existingOrder?.paystackReference) {
+    return NextResponse.json({
+      url: null,
+      reference: existingOrder.paystackReference,
+    });
+  }
+
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   /**
    * =========================
-   * 3. CREATE ORDER
+   * 4. PLATFORM FEE CALCULATION
+   * =========================
+   */
+  const platformFeeCents = Math.floor(subtotalCents * 0.1);
+
+  /**
+   * IMPORTANT:
+   * Paystack "amount" must include FULL charge
+   */
+  const totalAmountCents = subtotalCents + platformFeeCents;
+
+  /**
+   * =========================
+   * 5. CREATE ORDER
    * =========================
    */
   const order = await db.order.create({
     data: {
       userId: user.id,
       status: OrderStatus.PENDING,
-      totalCents: subtotalCents,
+      totalCents: totalAmountCents,
       currency: PAYSTACK_CURRENCY.toLowerCase(),
       items: {
         create: items.map((item) => ({
@@ -85,20 +117,13 @@ export async function POST() {
 
   /**
    * =========================
-   * 4. PLATFORM FEE (10%)
-   * =========================
-   */
-  const platformFeeCents = Math.floor(subtotalCents * 0.1);
-
-  /**
-   * =========================
-   * 5. INIT PAYSTACK SPLIT
+   * 6. INIT PAYSTACK TRANSACTION
    * =========================
    */
   const payment = await initializePaystackTransaction({
     email: user.email,
 
-    amountCents: subtotalCents,
+    amountCents: totalAmountCents,
 
     reference,
 
@@ -110,18 +135,16 @@ export async function POST() {
     },
 
     /**
-     * 🔥 PAYSTACK SPLIT CONFIG
+     * PAYSTACK MARKETPLACE SPLIT
      */
     subaccountCode: seller.subaccountCode,
-
     transactionChargeCents: platformFeeCents,
-
     bearer: "account",
   });
 
   /**
    * =========================
-   * 6. SAVE REFERENCE
+   * 7. SAVE REFERENCE
    * =========================
    */
   await db.order.update({
