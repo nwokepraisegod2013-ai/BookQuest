@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createSubaccount } from "@/lib/paystack";
+import { createSubaccount } from "@/lib/paystack/subaccount";
 
 export async function POST(req: Request) {
   try {
@@ -33,12 +33,19 @@ export async function POST(req: Request) {
 
     /**
      * =========================
-     * BLOCK DUPLICATE SETUP
+     * IDENTITY GUARD
      * =========================
      */
     if (seller.subaccountCode) {
       return NextResponse.json(
         { error: "Payout already configured" },
+        { status: 400 }
+      );
+    }
+
+    if (!seller.storeName) {
+      return NextResponse.json(
+        { error: "Invalid seller store name" },
         { status: 400 }
       );
     }
@@ -60,12 +67,16 @@ export async function POST(req: Request) {
      * =========================
      * CREATE PAYSTACK SUBACCOUNT
      * =========================
+     * NOTE:
+     * Paystack uses ONLY:
+     * - business_name
+     * - settlement_bank
+     * - account_number
      */
     const subaccountCode = await createSubaccount({
       storeName: seller.storeName,
       bankCode: body.bankCode,
       accountNumber: body.accountNumber,
-      businessName: body.accountName ?? seller.storeName,
     });
 
     /**
