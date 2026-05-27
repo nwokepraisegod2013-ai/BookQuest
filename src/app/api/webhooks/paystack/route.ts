@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { fulfillOrderByPaystackReference } from "@/lib/orders";
 import { verifyPaystackWebhookSignature } from "@/lib/paystack";
 import { OrderStatus } from "@prisma/client";
+import { calculateMarketplaceSplit } from "@/lib/db";
 
 type PaystackWebhookBody = {
   event: string;
@@ -21,9 +22,7 @@ export async function POST(req: Request) {
   const body = await req.text();
   const signature = (await headers()).get("x-paystack-signature");
 
-  console.log("[WEBHOOK RECEIVED]", {
-    time: new Date().toISOString(),
-  });
+  console.log("[WEBHOOK RECEIVED]", { time: new Date().toISOString() });
 
   /**
    * =========================
@@ -32,11 +31,7 @@ export async function POST(req: Request) {
    */
   if (!verifyPaystackWebhookSignature(body, signature)) {
     console.log("[WEBHOOK REJECTED] Invalid signature");
-
-    return NextResponse.json(
-      { error: "Invalid signature" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   const event = JSON.parse(body) as PaystackWebhookBody;
@@ -51,7 +46,7 @@ export async function POST(req: Request) {
 
   /**
    * =========================
-   * 2. IDEMPOTENCY CHECK (EVENT DEDUPE)
+   * 2. IDEMPOTENCY (EVENT DEDUPE)
    * =========================
    */
   const eventId = `${event.event}:${reference}`;
@@ -62,7 +57,6 @@ export async function POST(req: Request) {
 
   if (existingEvent) {
     console.log("[WEBHOOK SKIPPED] Duplicate event", { eventId });
-
     return NextResponse.json({ received: true });
   }
 
@@ -78,19 +72,8 @@ export async function POST(req: Request) {
    * 3. FILTER SUCCESS EVENTS ONLY
    * =========================
    */
-  if (event.event !== "charge.success") {
-    console.log("[WEBHOOK IGNORED] Non-success event", {
-      event: event.event,
-    });
-
-    return NextResponse.json({ received: true });
-  }
-
-  if (event.data.status !== "success") {
-    console.log("[WEBHOOK IGNORED] Failed payment status", {
-      status: event.data.status,
-    });
-
+  if (event.event !== "charge.success" || event.data.status !== "success") {
+    console.log("[WEBHOOK IGNORED] Non-success event");
     return NextResponse.json({ received: true });
   }
 
@@ -101,57 +84,47 @@ export async function POST(req: Request) {
    */
   const order = await db.order.findUnique({
     where: { paystackReference: reference },
-    include: { items: true },
+    include: {
+      items: {
+        include: {
+          book: true,
+        },
+      },
+    },
   });
 
   if (!order) {
     console.log("[WEBHOOK ERROR] Order not found", { reference });
-
-    return NextResponse.json(
-      { error: "Order not found" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
-
-  console.log("[ORDER FOUND]", {
-    orderId: order.id,
-    currentStatus: order.status,
-  });
 
   /**
    * =========================
-   * 5. AMOUNT VALIDATION (SECURITY CHECK)
+   * 5. AMOUNT VALIDATION (SECURITY)
    * =========================
    */
   const expectedAmount = order.totalCents;
   const receivedAmount = event.data.amount;
 
-  const isValidAmount = Math.abs(expectedAmount - receivedAmount) <= 1;
-
-  if (!isValidAmount) {
+  if (Math.abs(expectedAmount - receivedAmount) > 1) {
     console.error("[WEBHOOK AMOUNT MISMATCH]", {
-      orderId: order.id,
       expectedAmount,
       receivedAmount,
       reference,
     });
 
-    return NextResponse.json(
-      { error: "Invalid amount" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
   }
 
   /**
    * =========================
-   * 6. IDENTITY GUARD (PREVENT DOUBLE FULFILLMENT)
+   * 6. IDENTITY GUARD
    * =========================
    */
   if (order.status === OrderStatus.PAID) {
-    console.log("[WEBHOOK SKIP] Order already paid", {
+    console.log("[WEBHOOK SKIP] Already processed", {
       orderId: order.id,
     });
-
     return NextResponse.json({ received: true });
   }
 
@@ -162,24 +135,63 @@ export async function POST(req: Request) {
    */
   await db.order.update({
     where: { id: order.id },
-    data: {
-      status: OrderStatus.PAID,
-    },
+    data: { status: OrderStatus.PAID },
   });
 
-  console.log("[ORDER MARKED PAID]", {
-    orderId: order.id,
-  });
+  console.log("[ORDER MARKED PAID]", { orderId: order.id });
 
   /**
    * =========================
-   * 8. FULFILL ORDER
+   * 8. 💰 EARNINGS CALCULATION LAYER (NEW)
+   * =========================
+   *
+   * This is the CORE marketplace financial logic
+   */
+  try {
+    const platformFeePercent = 10;
+
+    for (const item of order.items) {
+      const split = calculateMarketplaceSplit({
+        grossCents: item.priceCents,
+        platformFeePercent,
+      });
+
+      console.log("[EARNINGS CALCULATED]", {
+        orderId: order.id,
+        bookId: item.bookId,
+        sellerId: item.sellerId,
+        gross: split.grossCents,
+        platformFee: split.platformFeeCents,
+        sellerEarnings: split.sellerEarningsCents,
+      });
+
+      /**
+       * OPTIONAL PERSISTENCE HOOK (ENABLE WHEN LEDGER TABLE EXISTS)
+       *
+       * await db.earningLedger.create({
+       *   data: {
+       *     orderId: order.id,
+       *     sellerId: item.sellerId,
+       *     grossCents: split.grossCents,
+       *     feeCents: split.platformFeeCents,
+       *     netCents: split.sellerEarningsCents,
+       *   }
+       * });
+       */
+    }
+  } catch (err) {
+    console.error("[EARNINGS ERROR]", err);
+  }
+
+  /**
+   * =========================
+   * 9. FULFILL ORDER
    * =========================
    */
   try {
     await fulfillOrderByPaystackReference(reference);
 
-    console.log("[ORDER FULFILLED SUCCESS]", {
+    console.log("[ORDER FULFILLED]", {
       orderId: order.id,
       reference,
     });
@@ -188,11 +200,6 @@ export async function POST(req: Request) {
       orderId: order.id,
       error: err,
     });
-
-    /**
-     * IMPORTANT:
-     * Do not fail webhook — Paystack will NOT retry reliably for business logic errors
-     */
   }
 
   return NextResponse.json({ received: true });
