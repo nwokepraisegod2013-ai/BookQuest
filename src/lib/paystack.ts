@@ -19,12 +19,33 @@ type PaystackResponse<T> = {
   data: T;
 };
 
+/**
+ * ===============================
+ * INITIALIZE TRANSACTION (UPGRADED)
+ * ===============================
+ */
 export async function initializePaystackTransaction(input: {
   email: string;
   amountCents: number;
   reference: string;
   callbackUrl: string;
   metadata: Record<string, string>;
+
+  /**
+   * 👇 NEW: seller subaccount code (ACCT_xxx)
+   */
+  subaccountCode?: string;
+
+  /**
+   * 👇 NEW: platform fee in kobo (e.g. 50000 = ₦500)
+   */
+  transactionChargeCents?: number;
+
+  /**
+   * Optional Paystack control
+   * "account" = split from total amount
+   */
+  bearer?: "account" | "subaccount";
 }) {
   const res = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
     method: "POST",
@@ -39,6 +60,17 @@ export async function initializePaystackTransaction(input: {
       reference: input.reference,
       callback_url: input.callbackUrl,
       metadata: input.metadata,
+
+      // =========================
+      // 🔥 MARKETPLACE SPLIT LOGIC
+      // =========================
+      ...(input.subaccountCode ? { subaccount: input.subaccountCode } : {}),
+
+      ...(typeof input.transactionChargeCents === "number"
+        ? { transaction_charge: input.transactionChargeCents }
+        : {}),
+
+      bearer: input.bearer ?? "account",
     }),
   });
 
@@ -55,6 +87,9 @@ export async function initializePaystackTransaction(input: {
   return json.data;
 }
 
+/**
+ * VERIFY TRANSACTION (UNCHANGED)
+ */
 export async function verifyPaystackTransaction(reference: string) {
   const res = await fetch(
     `${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`,
@@ -78,11 +113,19 @@ export async function verifyPaystackTransaction(reference: string) {
   return json.data;
 }
 
-export function verifyPaystackWebhookSignature(body: string, signature: string | null) {
+/**
+ * WEBHOOK SIGNATURE VERIFICATION (UNCHANGED)
+ */
+export function verifyPaystackWebhookSignature(
+  body: string,
+  signature: string | null
+) {
   if (!signature) return false;
+
   const hash = crypto
     .createHmac("sha512", getPaystackSecretKey())
     .update(body)
     .digest("hex");
+
   return hash === signature;
 }
