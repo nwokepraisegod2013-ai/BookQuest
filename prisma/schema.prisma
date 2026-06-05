@@ -61,6 +61,7 @@ model SellerProfile {
   bio            String?
   verified       Boolean  @default(false)
   commissionRate Float    @default(15)
+  subaccountCode String?
   books          Book[]
   payouts        Payout[]
   createdAt      DateTime @default(now())
