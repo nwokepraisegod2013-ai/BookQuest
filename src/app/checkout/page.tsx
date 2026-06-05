@@ -83,7 +83,7 @@ export default async function CheckoutPage() {
                 </p>
 
                 <p className="mt-2 text-sm text-blue-300">
-                  {formatPrice(item.priceCents)}
+                  {formatPrice(item.book.salePriceCents ?? item.book.priceCents)}
                 </p>
               </div>
             </GlassPanel>
