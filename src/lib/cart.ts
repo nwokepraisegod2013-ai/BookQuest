@@ -7,6 +7,7 @@ export async function getCart(userId: string) {
     select: {
       id: true,
       userId: true,
+      bookId: true,
       createdAt: true,
       book: {
         select: {
