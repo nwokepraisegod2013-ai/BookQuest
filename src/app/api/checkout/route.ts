@@ -44,7 +44,7 @@ export async function POST() {
       create: items.map((item) => ({
         bookId: item.book.id,
         sellerId: item.book.sellerId,
-        priceCents: item.priceCents,
+        priceCents: item.book.salePriceCents ?? item.book.priceCents,
       })),
     },
   };
