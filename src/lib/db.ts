@@ -1,4 +1,4 @@
-import { PrismaClient, OrderStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 /**
  * =========================
@@ -35,18 +35,7 @@ export const db =
  * =========================
  */
 if (process.env.NODE_ENV === "development") {
-  db.$on("query", (e) => {
-    console.log("🟡 QUERY:", e.query);
-    console.log("⏱ Duration:", `${e.duration}ms`);
-  });
-
-  db.$on("error", (e) => {
-    console.error("🔴 PRISMA ERROR:", e);
-  });
-
-  db.$on("warn", (e) => {
-    console.warn("🟠 PRISMA WARN:", e.message);
-  });
+  console.log("Prisma development mode enabled");
 }
 
 /**
@@ -55,33 +44,7 @@ if (process.env.NODE_ENV === "development") {
  * =========================
  * Only logs transitions (DO NOT compute earnings here)
  */
-db.$use(async (params, next) => {
-  const result = await next(params);
 
-  try {
-    if (params.model === "Order" && params.action === "update") {
-      const data = params.args?.data;
-
-      if (data?.status === OrderStatus.PAID) {
-        console.log("💰 ORDER COMPLETED:", {
-          orderId: params.args.where?.id,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      if (data?.status === OrderStatus.REFUNDED) {
-        console.log("💸 ORDER REFUNDED:", {
-          orderId: params.args.where?.id,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    }
-  } catch (err) {
-    console.error("⚠️ Financial middleware error:", err);
-  }
-
-  return result;
-});
 
 /**
  * =====================================================
