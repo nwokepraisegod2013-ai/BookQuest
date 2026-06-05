@@ -15,14 +15,16 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware((auth, req) => {
-  if (!isPublicRoute(req)) {
-    auth.protect();
-  }
+  // Public routes bypass auth
+  if (isPublicRoute(req)) return;
+
+  // Protected routes
+  auth.protect();
 });
 
 export const config = {
   matcher: [
-    "/((?!_next|.*\\..*).*)",
-    "/(api|trpc)(.*)",
+    // Run middleware on all routes except static assets
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };
