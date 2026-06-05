@@ -11,8 +11,12 @@ export async function getCart(userId: string) {
       book: {
         select: {
           id: true,
+          slug: true,
+          title: true,
+          coverUrl: true,
           priceCents: true,
           salePriceCents: true,
+          currency: true,
           sellerId: true,
           seller: true,
         },
