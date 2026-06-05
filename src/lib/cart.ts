@@ -4,9 +4,18 @@ import { getEffectivePriceCents } from "./utils";
 export async function getCart(userId: string) {
   const items = await db.cartItem.findMany({
     where: { userId },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      createdAt: true,
       book: {
-        include: { seller: true },
+        select: {
+          id: true,
+          priceCents: true,
+          salePriceCents: true,
+          sellerId: true,
+          seller: true,
+        },
       },
     },
   });
