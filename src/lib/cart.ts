@@ -1,0 +1,20 @@
+import { db } from "./db";
+import { getEffectivePriceCents } from "./utils";
+
+export async function getCart(userId: string) {
+  const items = await db.cartItem.findMany({
+    where: { userId },
+    include: {
+      book: {
+        include: { seller: true },
+      },
+    },
+  });
+
+  const subtotalCents = items.reduce(
+    (sum, item) => sum + getEffectivePriceCents(item.book),
+    0
+  );
+
+  return { items, subtotalCents, itemCount: items.length };
+}

@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+enum BookStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+model User {
+  id               String         @id @default(cuid())
+  clerkId          String         @unique
+  email            String         @unique
+  name             String?
+  imageUrl         String?
+  role             Role           @default(CUSTOMER)
+  stripeCustomerId String?        @unique
+  sellerProfile    SellerProfile?
+  orders           Order[]
+  library          LibraryEntry[]
+  reviews          Review[]
+  cartItems        CartItem[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model SellerProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName      String
+  storeSlug      String   @unique
+  bio            String?
+  verified       Boolean  @default(false)
+  commissionRate Float    @default(15)
+  books          Book[]
+  payouts        Payout[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  books       Book[]
+  createdAt   DateTime @default(now())
+}
+
+model Author {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  bio       String?
+  books     Book[]
+  createdAt DateTime @default(now())
+}
+
+model Book {
+  id             String     @id @default(cuid())
+  slug           String     @unique
+  title          String
+  subtitle       String?
+  description    String
+  priceCents     Int
+  salePriceCents Int?
+  currency       String     @default("ngn")
+  coverUrl       String
+  pdfKey         String
+  samplePdfKey   String?
+  pageCount      Int?
+  language       String     @default("en")
+  isbn           String?
+  status         BookStatus @default(DRAFT)
+  featured       Boolean    @default(false)
+  sellerId       String
+  seller         SellerProfile @relation(fields: [sellerId], references: [id])
+  categoryId     String?
+  category       Category?  @relation(fields: [categoryId], references: [id])
+  authors        Author[]
+  orderItems     OrderItem[]
+  library        LibraryEntry[]
+  reviews        Review[]
+  cartItems      CartItem[]
+  averageRating  Float      @default(0)
+  reviewCount    Int        @default(0)
+  salesCount     Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([status, featured])
+  @@index([sellerId])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, bookId])
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+  paystackReference String?     @unique
+  stripeSessionId   String?     @unique
+  stripePaymentId   String?     @unique
+  status            OrderStatus @default(PENDING)
+  totalCents      Int
+  currency        String      @default("ngn")
+  items           OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id           String @id @default(cuid())
+  orderId      String
+  order        Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  bookId       String
+  book         Book   @relation(fields: [bookId], references: [id])
+  sellerId     String
+  priceCents   Int
+  platformFeeCents Int @default(0)
+  sellerEarningsCents Int @default(0)
+}
+
+model LibraryEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id])
+  orderId   String?
+  grantedAt DateTime @default(now())
+
+  @@unique([userId, bookId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  rating    Int
+  title     String?
+  body      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, bookId])
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  sellerId    String
+  seller      SellerProfile @relation(fields: [sellerId], references: [id])
+  amountCents Int
+  currency    String       @default("ngn")
+  status      PayoutStatus @default(PENDING)
+  reference   String?
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime     @default(now())
+}
+
+model StripeEvent {
+  id        String   @id
+  type      String
+  processed Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model PaystackEvent {
+  id        String   @id
+  type      String
+  processed Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model PlatformSettings {
+  id                    String @id @default("default")
+  platformCommissionPct Float  @default(15)
+  minPayoutCents        Int    @default(500000)
+  supportEmail          String @default("support@bookquest.app")
+}
