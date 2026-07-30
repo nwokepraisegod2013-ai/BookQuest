@@ -27,6 +27,14 @@ export function BookForm({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [coverPreview, setCoverPreview] = useState("");
+  const [coverName, setCoverName] = useState("");
+  const [pdfName, setPdfName] = useState("");
+  const [sampleName, setSampleName] = useState("");
+
+  function formatFileSize(bytes: number) {
+    return `${(bytes / 1024 / 1024).toFixed(bytes < 1024 * 1024 ? 1 : 0)} MB`;
+  }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -137,10 +145,23 @@ export function BookForm({
             accept="image/*"
             required={!book}
             className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              setCoverName(`${file.name} (${formatFileSize(file.size)})`);
+              setCoverPreview(URL.createObjectURL(file));
+            }}
           />
           <label htmlFor="book-cover" className="inline-flex cursor-pointer items-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10">
             Choose cover image
           </label>
+          {coverPreview && (
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-sm text-zinc-300">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverPreview} alt="Selected cover preview" className="h-16 w-12 rounded object-cover" />
+              <span><strong className="block text-green-300">Cover ready</strong>{coverName}</span>
+            </div>
+          )}
         </div>
         <div>
           <p className="mb-2 text-sm text-zinc-400">Book PDF{book ? " (leave empty to keep current)" : ""}</p>
@@ -151,20 +172,29 @@ export function BookForm({
             accept="application/pdf"
             required={!book}
             className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) setPdfName(`${file.name} (${formatFileSize(file.size)})`);
+            }}
           />
           <label htmlFor="book-pdf" className="inline-flex cursor-pointer items-center rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 text-sm font-medium text-blue-200 transition hover:bg-blue-500/20">
             Choose PDF file
           </label>
+          {pdfName && <p className="mt-2 rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2 text-sm text-green-300">PDF ready to upload: {pdfName}</p>}
           <p className="mt-1 text-xs text-zinc-600">PDF only, up to 50 MB. This file is delivered securely to buyers after purchase.</p>
         </div>
         <div>
           <p className="mb-2 text-sm text-zinc-400">Sample PDF (optional)</p>
-          <input id="sample-pdf" name="sample" type="file" accept="application/pdf" className="sr-only" />
+          <input id="sample-pdf" name="sample" type="file" accept="application/pdf" className="sr-only" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) setSampleName(`${file.name} (${formatFileSize(file.size)})`);
+          }} />
           <label htmlFor="sample-pdf" className="inline-flex cursor-pointer items-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10">
             Choose sample PDF
           </label>
+          {sampleName && <p className="mt-2 text-sm text-green-300">Sample ready: {sampleName}</p>}
         </div>
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">Upload could not be saved: {error}</p>}
         <GlassButton type="submit" disabled={loading} className="w-full">
           {loading ? "Saving..." : book ? "Update book" : "Create draft"}
         </GlassButton>
