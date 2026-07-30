@@ -10,6 +10,13 @@ import {
 } from "@/lib/paystack";
 
 export async function POST() {
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return NextResponse.json(
+      { error: "Payments are not configured. Add PAYSTACK_SECRET_KEY to this Vercel project's Production environment." },
+      { status: 503 }
+    );
+  }
+
   const user = await getAuthUser();
 
   if (!user) {
@@ -95,8 +102,9 @@ export async function POST() {
     });
   } catch (error) {
     console.error("[PAYSTACK INIT FAILED]", error);
+    const message = error instanceof Error ? error.message : "Unknown Paystack error";
     return NextResponse.json(
-      { error: "Payment initialization failed", retryable: true },
+      { error: `Payment initialization failed: ${message}`, retryable: true },
       { status: 500 }
     );
   }
