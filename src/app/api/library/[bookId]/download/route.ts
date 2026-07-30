@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { openPrivateFileStream, privateFileExists } from "@/lib/storage";
+import { getBlobUrl, openPrivateFileStream, privateFileExists } from "@/lib/storage";
 
 export async function GET(
   _req: Request,
@@ -26,6 +26,14 @@ export async function GET(
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
+  const blobUrl = getBlobUrl(pdfKey);
+  if (blobUrl) {
+    const response = await fetch(blobUrl);
+    if (!response.ok || !response.body) return NextResponse.json({ error: "File not found" }, { status: 404 });
+    return new NextResponse(response.body, {
+      headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${entry.book.slug}.pdf"`, "Cache-Control": "private, no-store" },
+    });
+  }
   const stream = openPrivateFileStream(pdfKey);
   const webStream = new ReadableStream({
     start(controller) {

@@ -2,6 +2,7 @@ import { createReadStream } from "fs";
 import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { nanoid } from "nanoid";
+import { put } from "@vercel/blob";
 
 // Upload locations are runtime paths; excluding them from build tracing avoids packaging the workspace.
 const PUBLIC_UPLOAD_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
@@ -34,6 +35,15 @@ export async function saveUploadedFile(
   const ext = path.extname(file.name) || (folder === "covers" ? ".jpg" : ".pdf");
   const filename = `${nanoid()}${ext}`;
 
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`${folder}/${filename}`, file, {
+      access: "public",
+      addRandomSuffix: false,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    return folder === "covers" ? blob.url : `blob:${blob.url}`;
+  }
+
   if (folder === "covers") {
     const dir = path.join(PUBLIC_UPLOAD_DIR, folder);
     await mkdir(dir, { recursive: true });
@@ -65,6 +75,10 @@ export function resolvePrivateFileKey(key: string): string {
 }
 
 export async function privateFileExists(key: string): Promise<boolean> {
+  if (key.startsWith("blob:")) {
+    const response = await fetch(key.slice(5), { method: "HEAD" });
+    return response.ok;
+  }
   try {
     await access(resolvePrivateFileKey(key));
     return true;
@@ -75,6 +89,10 @@ export async function privateFileExists(key: string): Promise<boolean> {
 
 export function openPrivateFileStream(key: string) {
   return createReadStream(resolvePrivateFileKey(key));
+}
+
+export function getBlobUrl(key: string): string | null {
+  return key.startsWith("blob:") ? key.slice(5) : null;
 }
 
 /** @deprecated Use resolvePrivateFileKey */
