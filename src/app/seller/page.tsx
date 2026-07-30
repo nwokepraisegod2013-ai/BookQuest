@@ -47,10 +47,11 @@ export default async function SellerDashboardPage() {
           )}
         </div>
         {user.sellerProfile && (
-          <Link href="/seller/books/new">
-            <GlassButton>
-              <Plus className="h-4 w-4" /> Upload a book
-            </GlassButton>
+          <Link
+            href="/seller/books/new"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-gradient-to-r from-blue-600/90 to-indigo-600/90 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:from-blue-500 hover:to-indigo-500"
+          >
+            <Plus className="h-4 w-4" /> Upload a book
           </Link>
         )}
       </div>
