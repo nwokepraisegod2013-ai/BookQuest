@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { SellerApplyForm } from "@/components/seller/apply-form";
 
 export default async function SellerApplyPage() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user) redirect("/sign-in");
   if (user.sellerProfile || user.role === Role.SELLER) {
     redirect("/seller");

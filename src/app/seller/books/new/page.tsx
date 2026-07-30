@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { BookForm } from "@/components/seller/book-form";
 import { db } from "@/lib/db";
 
 export default async function NewBookPage() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user?.sellerProfile) redirect("/seller/apply");
 
   const categories = await db.category.findMany({ orderBy: { name: "asc" } });

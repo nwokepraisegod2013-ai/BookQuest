@@ -37,14 +37,22 @@ export function BookForm({
     const url = book ? `/api/seller/books/${book.id}` : "/api/seller/books";
     const method = book ? "PATCH" : "POST";
 
-    const res = await fetch(url, { method, body: fd });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Failed to save");
+    try {
+      const res = await fetch(url, { method, body: fd });
+      const responseType = res.headers.get("content-type") ?? "";
+      const data = responseType.includes("application/json")
+        ? await res.json()
+        : { error: "The server could not process the upload. Please try again after checking your connection." };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to save");
+        setLoading(false);
+        return;
+      }
+      window.location.href = "/seller";
+    } catch {
+      setError("Could not reach the server. Check your internet connection and try again.");
       setLoading(false);
-      return;
     }
-    window.location.href = "/seller";
   }
 
   return (

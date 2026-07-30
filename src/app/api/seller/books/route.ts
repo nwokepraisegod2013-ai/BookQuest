@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { BookStatus } from "@prisma/client";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveUploadedFile } from "@/lib/storage";
 import { slugify } from "@/lib/utils";
 import { connectAuthors, getUploadedFile, parseSellerBookFields } from "@/lib/seller-book";
 
 export async function POST(req: Request) {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user?.sellerProfile) {
     return NextResponse.json({ error: "Seller profile required" }, { status: 403 });
   }

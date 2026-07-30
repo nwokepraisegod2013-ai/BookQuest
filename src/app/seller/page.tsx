@@ -2,14 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus, BookOpen, DollarSign } from "lucide-react";
 import { Role } from "@prisma/client";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { GlassPanel, GlassButton, GlassBadge } from "@/components/ui/glass";
 import { formatPrice } from "@/lib/utils";
 import { SubmitBookButton } from "@/components/seller/submit-book-button";
 
 export default async function SellerDashboardPage() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user) redirect("/sign-in");
   if (user.role !== Role.SELLER && user.role !== Role.ADMIN) {
     redirect("/seller/apply");
