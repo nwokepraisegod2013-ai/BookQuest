@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fulfillOrderByPaystackReference } from "@/lib/orders";
 import { verifyPaystackTransaction } from "@/lib/paystack";
 
 export async function POST(req: Request) {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { reference } = (await req.json()) as { reference?: string };

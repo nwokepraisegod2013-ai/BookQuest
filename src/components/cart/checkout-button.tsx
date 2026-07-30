@@ -29,7 +29,15 @@ export function CheckoutButton() {
         },
       });
 
-      const data = await res.json();
+      const rawResponse = await res.text();
+      let data: { error?: string; url?: string; reference?: string };
+      try {
+        data = rawResponse ? JSON.parse(rawResponse) : {
+          error: "The payment service returned an empty response. Please try again shortly.",
+        };
+      } catch {
+        data = { error: "The payment service returned an invalid response. Please try again shortly." };
+      }
 
       if (!res.ok) {
         throw new Error(data?.error || "Checkout failed");

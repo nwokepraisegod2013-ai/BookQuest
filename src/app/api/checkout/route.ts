@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { OrderStatus } from "@prisma/client";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { getCart } from "@/lib/cart";
 import { db } from "@/lib/db";
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/lib/paystack";
 
 export async function POST() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
