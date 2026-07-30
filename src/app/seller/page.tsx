@@ -46,13 +46,20 @@ export default async function SellerDashboardPage() {
             </p>
           )}
         </div>
-        {user.sellerProfile && (
+        {user.sellerProfile ? (
           <a
             href="/seller/books/new"
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-gradient-to-r from-blue-600/90 to-indigo-600/90 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:from-blue-500 hover:to-indigo-500"
           >
             <Plus className="h-4 w-4" /> Upload a book
           </a>
+        ) : (
+          <Link
+            href="/seller/apply"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-gradient-to-r from-blue-600/90 to-indigo-600/90 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:from-blue-500 hover:to-indigo-500"
+          >
+            <Plus className="h-4 w-4" /> Set up seller profile
+          </Link>
         )}
       </div>
 
@@ -76,6 +83,11 @@ export default async function SellerDashboardPage() {
       </div>
 
       <h2 className="mb-4 text-xl font-semibold text-white">Your books</h2>
+      {!user.sellerProfile && (
+        <GlassPanel className="mb-6 p-6 text-zinc-400">
+          Set up a seller profile to upload books. This identifies the store shown to readers on each listing.
+        </GlassPanel>
+      )}
       {books.length === 0 ? (
         <GlassPanel className="p-8 text-center text-zinc-400">
           No books yet. Upload your first PDF book.

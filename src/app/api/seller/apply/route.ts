@@ -101,10 +101,12 @@ export async function POST(req: Request) {
         },
       });
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { role: Role.SELLER },
-      });
+      if (user.role !== Role.ADMIN) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { role: Role.SELLER },
+        });
+      }
 
       return seller;
     });
