@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { BookStatus } from "@prisma/client";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveUploadedFile } from "@/lib/storage";
+import { connectAuthors, getUploadedFile, parseSellerBookFields } from "@/lib/seller-book";
 
 export async function PATCH(
   req: Request,
@@ -22,45 +24,36 @@ export async function PATCH(
   }
 
   const fd = await req.formData();
-  const title = String(fd.get("title") ?? book.title);
-  const description = String(fd.get("description") ?? book.description);
-  const priceNgn = parseInt(String(fd.get("price") ?? book.priceCents / 100), 10);
-  const saleRaw = String(fd.get("salePrice") ?? "").trim();
-  const saleNgn = saleRaw ? parseInt(saleRaw, 10) : null;
-  const categoryId = String(fd.get("categoryId") ?? "") || null;
-
-  if (!title || !description || priceNgn < 100) {
-    return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
-  }
-  if (saleNgn !== null && (saleNgn < 100 || saleNgn >= priceNgn)) {
-    return NextResponse.json({ error: "Sale price must be below regular price" }, { status: 400 });
-  }
-
-  const cover = fd.get("cover") as File | null;
-  const pdf = fd.get("pdf") as File | null;
-  const sample = fd.get("sample") as File | null;
+  const cover = getUploadedFile(fd, "cover");
+  const pdf = getUploadedFile(fd, "pdf");
+  const sample = getUploadedFile(fd, "sample");
 
   try {
+    const fields = await parseSellerBookFields(fd);
+    const bookData = {
+      title: fields.title, subtitle: fields.subtitle, description: fields.description,
+      priceCents: fields.priceCents, salePriceCents: fields.salePriceCents,
+      categoryId: fields.categoryId, language: fields.language, isbn: fields.isbn, pageCount: fields.pageCount,
+    };
     let coverUrl = book.coverUrl;
     let pdfKey = book.pdfKey;
     let samplePdfKey = book.samplePdfKey;
 
-    if (cover && cover.size > 0) coverUrl = await saveUploadedFile(cover, "covers");
-    if (pdf && pdf.size > 0) pdfKey = await saveUploadedFile(pdf, "pdfs");
-    if (sample && sample.size > 0) samplePdfKey = await saveUploadedFile(sample, "samples");
+    if (cover) coverUrl = await saveUploadedFile(cover, "covers");
+    if (pdf) pdfKey = await saveUploadedFile(pdf, "pdfs");
+    if (sample) samplePdfKey = await saveUploadedFile(sample, "samples");
+    const authors = await connectAuthors(fields.authorNames);
 
     const updated = await db.book.update({
       where: { id },
       data: {
-        title,
-        subtitle: String(fd.get("subtitle") ?? "") || null,
-        description,
-        priceCents: priceNgn * 100,
-        salePriceCents: saleNgn ? saleNgn * 100 : null,
-        categoryId,
+        ...bookData,
         coverUrl,
         pdfKey,
         samplePdfKey,
+        authors: { set: authors },
+        // Any edit withdraws a listing from review/public display until the seller submits it again.
+        status: BookStatus.DRAFT,
       },
     });
 

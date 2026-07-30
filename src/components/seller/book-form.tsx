@@ -19,6 +19,10 @@ export function BookForm({
     salePriceCents: number | null;
     categoryId: string | null;
     coverUrl: string;
+    authors: { name: string }[];
+    language: string;
+    isbn: string | null;
+    pageCount: number | null;
   };
 }) {
   const [loading, setLoading] = useState(false);
@@ -57,6 +61,12 @@ export function BookForm({
         <div>
           <label className="mb-1 block text-sm text-zinc-400">Description</label>
           <GlassTextarea name="description" required defaultValue={book?.description} />
+          <p className="mt-1 text-xs text-zinc-600">Tell readers what they will learn or experience (at least 20 characters).</p>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-zinc-400">Author(s)</label>
+          <GlassInput name="authors" defaultValue={book?.authors.map((author) => author.name).join(", ") ?? ""} placeholder="Ada Okafor, Tunde Bello" />
+          <p className="mt-1 text-xs text-zinc-600">Separate multiple authors with commas.</p>
         </div>
         <div>
           <label className="mb-1 block text-sm text-zinc-400">Price (NGN)</label>
@@ -69,6 +79,20 @@ export function BookForm({
             defaultValue={book ? book.priceCents / 100 : ""}
             placeholder="2500"
           />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">Language</label>
+            <GlassInput name="language" required defaultValue={book?.language ?? "en"} placeholder="en" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-zinc-400">Page count</label>
+            <GlassInput name="pageCount" type="number" min={1} defaultValue={book?.pageCount ?? ""} placeholder="180" />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-zinc-400">ISBN (optional)</label>
+          <GlassInput name="isbn" defaultValue={book?.isbn ?? ""} placeholder="978-..." />
         </div>
         <div>
           <label className="mb-1 block text-sm text-zinc-400">Sale price (NGN, optional)</label>
@@ -128,6 +152,7 @@ export function BookForm({
         <GlassButton type="submit" disabled={loading} className="w-full">
           {loading ? "Saving..." : book ? "Update book" : "Create draft"}
         </GlassButton>
+        <p className="text-center text-xs text-zinc-600">Your listing stays private until you submit it and it is approved by BookQuest.</p>
       </form>
     </GlassPanel>
   );

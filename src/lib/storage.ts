@@ -3,8 +3,9 @@ import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { nanoid } from "nanoid";
 
-const PUBLIC_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-const PRIVATE_STORAGE_DIR = path.join(process.cwd(), "storage", "private");
+// Upload locations are runtime paths; excluding them from build tracing avoids packaging the workspace.
+const PUBLIC_UPLOAD_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
+const PRIVATE_STORAGE_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "private");
 
 const MAX_COVER_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 50 * 1024 * 1024;

@@ -86,14 +86,14 @@ export default async function SellerDashboardPage() {
               <div>
                 <p className="font-medium text-white">{book.title}</p>
                 <p className="text-sm text-zinc-500">
-                  {book.status} · {formatPrice(book.priceCents)} · {book.salesCount} sales
+                  {book.status.replaceAll("_", " ")} · {formatPrice(book.priceCents)} · {book.salesCount} sales
                 </p>
               </div>
               <div className="flex gap-2">
                 <Link href={`/seller/books/${book.id}/edit`}>
                   <GlassButton variant="ghost">Edit</GlassButton>
                 </Link>
-                {book.status === "DRAFT" && (
+                {(book.status === "DRAFT" || book.status === "REJECTED") && (
                   <SubmitBookButton bookId={book.id} />
                 )}
               </div>

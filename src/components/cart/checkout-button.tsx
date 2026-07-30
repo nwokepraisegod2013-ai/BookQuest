@@ -66,7 +66,7 @@ export function CheckoutButton() {
   return (
     <GlassButton
       onClick={checkout}
-      disabled={loading || requestInFlight.current}
+      disabled={loading}
       className="px-8 py-3 text-base opacity-100 disabled:opacity-60"
     >
       {loading ? "Processing Payment..." : "Pay with Paystack"}

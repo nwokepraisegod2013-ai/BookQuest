@@ -35,7 +35,7 @@ export async function paystackRequest<T>(
     },
   });
 
-  let json: any;
+  let json: unknown;
 
   try {
     json = await res.json();
@@ -49,11 +49,12 @@ export async function paystackRequest<T>(
    * message: string
    * data: object
    */
-  if (!res.ok || json?.status !== true) {
-    throw new Error(json?.message || `Paystack request failed: ${path}`);
+  const payload = json as { status?: boolean; message?: string; data?: T };
+  if (!res.ok || payload.status !== true) {
+    throw new Error(payload.message || `Paystack request failed: ${path}`);
   }
 
-  return json.data as T;
+  return payload.data as T;
 }
 
 /**

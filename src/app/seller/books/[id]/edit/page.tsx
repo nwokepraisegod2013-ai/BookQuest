@@ -14,6 +14,7 @@ export default async function EditBookPage({
   const { id } = await params;
   const book = await db.book.findFirst({
     where: { id, sellerId: user.sellerProfile.id },
+    include: { authors: true },
   });
 
   if (!book) notFound();
@@ -34,6 +35,10 @@ export default async function EditBookPage({
           salePriceCents: book.salePriceCents,
           categoryId: book.categoryId,
           coverUrl: book.coverUrl,
+          authors: book.authors,
+          language: book.language,
+          isbn: book.isbn,
+          pageCount: book.pageCount,
         }}
       />
     </div>

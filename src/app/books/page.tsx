@@ -1,7 +1,7 @@
 import { getPublishedBooks } from "@/lib/books";
 import { db } from "@/lib/db";
 import { BookCard } from "@/components/books/book-card";
-import { GlassPanel, GlassInput } from "@/components/ui/glass";
+import { GlassPanel } from "@/components/ui/glass";
 import { BooksFilters } from "@/components/books/books-filters";
 
 export default async function BooksPage({

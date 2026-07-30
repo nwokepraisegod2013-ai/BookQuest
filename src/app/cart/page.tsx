@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { syncUserFromClerk } from "@/lib/auth";
 import { getCart } from "@/lib/cart";
-import { GlassPanel, GlassButton } from "@/components/ui/glass";
+import { GlassPanel } from "@/components/ui/glass";
 import { formatPrice, getEffectivePriceCents } from "@/lib/utils";
 import { CheckoutButton } from "@/components/cart/checkout-button";
 import { RemoveFromCartButton } from "@/components/cart/remove-from-cart";

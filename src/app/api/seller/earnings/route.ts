@@ -69,7 +69,7 @@ export async function GET(req: Request) {
    * =========================
    */
   let grossCents = 0;
-  let platformFeeCents = 0;
+  const platformFeeCents = 0;
   let netCents = 0;
 
   const orderBreakdown = orders.map((order) => {

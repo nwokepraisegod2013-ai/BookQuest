@@ -8,7 +8,13 @@ export function SubmitBookButton({ bookId }: { bookId: string }) {
 
   async function submit() {
     setLoading(true);
-    await fetch(`/api/seller/books/${bookId}/submit`, { method: "POST" });
+    const response = await fetch(`/api/seller/books/${bookId}/submit`, { method: "POST" });
+    if (!response.ok) {
+      const data = await response.json();
+      window.alert(data.error ?? "Could not submit this listing");
+      setLoading(false);
+      return;
+    }
     window.location.reload();
   }
 

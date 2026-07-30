@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Download } from "lucide-react";
 import { syncUserFromClerk } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { GlassPanel } from "@/components/ui/glass";
