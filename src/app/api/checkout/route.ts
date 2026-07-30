@@ -44,16 +44,18 @@ export async function POST() {
     },
     });
 
+    const orderItems = items.map((item) => ({
+      bookId: item.book.id,
+      sellerId: item.book.sellerId,
+      priceCents: item.book.salePriceCents ?? item.book.priceCents,
+    }));
+
     const orderPayload = {
     totalCents,
     currency: PAYSTACK_CURRENCY.toLowerCase(),
     items: {
       deleteMany: {},
-      create: items.map((item) => ({
-        bookId: item.book.id,
-        sellerId: item.book.sellerId,
-        priceCents: item.book.salePriceCents ?? item.book.priceCents,
-      })),
+      create: orderItems,
     },
     };
 
@@ -67,7 +69,9 @@ export async function POST() {
       data: {
         userId: user.id,
         status: OrderStatus.PENDING,
-        ...orderPayload,
+        totalCents,
+        currency: PAYSTACK_CURRENCY.toLowerCase(),
+        items: { create: orderItems },
       },
     });
     }
