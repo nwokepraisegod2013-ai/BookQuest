@@ -49,7 +49,7 @@ export default async function SellerDashboardPage() {
         {user.sellerProfile && (
           <Link href="/seller/books/new">
             <GlassButton>
-              <Plus className="h-4 w-4" /> New book
+              <Plus className="h-4 w-4" /> Upload a book
             </GlassButton>
           </Link>
         )}
@@ -77,7 +77,7 @@ export default async function SellerDashboardPage() {
       <h2 className="mb-4 text-xl font-semibold text-white">Your books</h2>
       {books.length === 0 ? (
         <GlassPanel className="p-8 text-center text-zinc-400">
-          No books yet. Create your first listing.
+          No books yet. Upload your first PDF book.
         </GlassPanel>
       ) : (
         <div className="space-y-3">

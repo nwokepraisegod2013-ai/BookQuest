@@ -134,7 +134,7 @@ export function BookForm({
         </div>
         <div>
           <label className="mb-1 block text-sm text-zinc-400">
-            PDF file{book ? " (leave empty to keep current)" : ""}
+            Book PDF{book ? " (leave empty to keep current)" : ""}
           </label>
           <input
             name="pdf"
@@ -143,6 +143,7 @@ export function BookForm({
             required={!book}
             className="text-sm text-zinc-400"
           />
+          <p className="mt-1 text-xs text-zinc-600">PDF only, up to 50 MB. This file is delivered securely to buyers after purchase.</p>
         </div>
         <div>
           <label className="mb-1 block text-sm text-zinc-400">Sample PDF (optional)</label>

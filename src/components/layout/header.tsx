@@ -41,6 +41,11 @@ export function Header({ cartCount = 0, role }: { cartCount?: number; role?: str
                 <Store className="h-4 w-4" /> Seller
               </Link>
             )}
+            {role === "CUSTOMER" && (
+              <Link href="/seller/apply" className="flex items-center gap-1 transition hover:text-white">
+                <Store className="h-4 w-4" /> Sell books
+              </Link>
+            )}
             {role === "ADMIN" && (
               <Link href="/admin" className="flex items-center gap-1 text-amber-300 transition hover:text-amber-200">
                 <Shield className="h-4 w-4" /> Admin
