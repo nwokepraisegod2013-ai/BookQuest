@@ -10,40 +10,41 @@ import {
 } from "@/lib/paystack";
 
 export async function POST() {
-  if (!process.env.PAYSTACK_SECRET_KEY) {
+  try {
+    if (!process.env.PAYSTACK_SECRET_KEY) {
     return NextResponse.json(
       { error: "Payments are not configured. Add PAYSTACK_SECRET_KEY to this Vercel project's Production environment." },
       { status: 503 }
     );
-  }
+    }
 
-  const user = await getAuthUser();
+    const user = await getAuthUser();
 
-  if (!user) {
+    if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    }
 
-  const { items, subtotalCents } = await getCart(user.id);
+    const { items, subtotalCents } = await getCart(user.id);
 
-  if (!items.length) {
+    if (!items.length) {
     return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
-  }
+    }
 
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const PLATFORM_FEE_PERCENT = 10;
-  const platformFeeCents = Math.floor(
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const PLATFORM_FEE_PERCENT = 10;
+    const platformFeeCents = Math.floor(
     (subtotalCents * PLATFORM_FEE_PERCENT) / 100
-  );
-  const totalCents = subtotalCents + platformFeeCents;
+    );
+    const totalCents = subtotalCents + platformFeeCents;
 
-  let order = await db.order.findFirst({
+    let order = await db.order.findFirst({
     where: {
       userId: user.id,
       status: OrderStatus.PENDING,
     },
-  });
+    });
 
-  const orderPayload = {
+    const orderPayload = {
     totalCents,
     currency: PAYSTACK_CURRENCY.toLowerCase(),
     items: {
@@ -54,14 +55,14 @@ export async function POST() {
         priceCents: item.book.salePriceCents ?? item.book.priceCents,
       })),
     },
-  };
+    };
 
-  if (order) {
+    if (order) {
     order = await db.order.update({
       where: { id: order.id },
       data: orderPayload,
     });
-  } else {
+    } else {
     order = await db.order.create({
       data: {
         userId: user.id,
@@ -69,19 +70,18 @@ export async function POST() {
         ...orderPayload,
       },
     });
-  }
+    }
 
-  const reference =
+    const reference =
     order.paystackReference ?? paystackReferenceForOrder(order.id);
 
-  if (!order.paystackReference) {
+    if (!order.paystackReference) {
     order = await db.order.update({
       where: { id: order.id },
       data: { paystackReference: reference },
     });
-  }
+    }
 
-  try {
     const payment = await initializePaystackTransaction({
       email: user.email,
       amountCents: totalCents,
@@ -101,7 +101,7 @@ export async function POST() {
       reused: Boolean(order.paystackReference),
     });
   } catch (error) {
-    console.error("[PAYSTACK INIT FAILED]", error);
+    console.error("[CHECKOUT FAILED]", error);
     const message = error instanceof Error ? error.message : "Unknown Paystack error";
     return NextResponse.json(
       { error: `Payment initialization failed: ${message}`, retryable: true },
