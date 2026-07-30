@@ -121,33 +121,40 @@ export function BookForm({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-zinc-400">
-            Cover image{book ? " (leave empty to keep current)" : ""}
-          </label>
+          <p className="mb-2 text-sm text-zinc-400">Cover image{book ? " (leave empty to keep current)" : ""}</p>
           <input
+            id="book-cover"
             name="cover"
             type="file"
             accept="image/*"
             required={!book}
-            className="text-sm text-zinc-400"
+            className="sr-only"
           />
+          <label htmlFor="book-cover" className="inline-flex cursor-pointer items-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10">
+            Choose cover image
+          </label>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-zinc-400">
-            Book PDF{book ? " (leave empty to keep current)" : ""}
-          </label>
+          <p className="mb-2 text-sm text-zinc-400">Book PDF{book ? " (leave empty to keep current)" : ""}</p>
           <input
+            id="book-pdf"
             name="pdf"
             type="file"
             accept="application/pdf"
             required={!book}
-            className="text-sm text-zinc-400"
+            className="sr-only"
           />
+          <label htmlFor="book-pdf" className="inline-flex cursor-pointer items-center rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 text-sm font-medium text-blue-200 transition hover:bg-blue-500/20">
+            Choose PDF file
+          </label>
           <p className="mt-1 text-xs text-zinc-600">PDF only, up to 50 MB. This file is delivered securely to buyers after purchase.</p>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-zinc-400">Sample PDF (optional)</label>
-          <input name="sample" type="file" accept="application/pdf" className="text-sm text-zinc-400" />
+          <p className="mb-2 text-sm text-zinc-400">Sample PDF (optional)</p>
+          <input id="sample-pdf" name="sample" type="file" accept="application/pdf" className="sr-only" />
+          <label htmlFor="sample-pdf" className="inline-flex cursor-pointer items-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10">
+            Choose sample PDF
+          </label>
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <GlassButton type="submit" disabled={loading} className="w-full">
