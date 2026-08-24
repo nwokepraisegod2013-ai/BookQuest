@@ -1,6 +1,6 @@
-import Link from "next/link";
 "use client";
 
+import Link from "next/link";
 import { Suspense, useCallback, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { GlassPanel, GlassButton } from "@/components/ui/glass";
