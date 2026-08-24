@@ -1,13 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { GlassPanel } from "@/components/ui/glass";
 import { DownloadButton } from "@/components/library/download-button";
 
 export default async function LibraryPage() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user) redirect("/sign-in");
 
   const entries = await db.libraryEntry.findMany({

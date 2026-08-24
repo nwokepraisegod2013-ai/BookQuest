@@ -37,35 +37,15 @@ export async function POST() {
     );
     const totalCents = subtotalCents + platformFeeCents;
 
-    let order = await db.order.findFirst({
-    where: {
-      userId: user.id,
-      status: OrderStatus.PENDING,
-    },
-    });
-
     const orderItems = items.map((item) => ({
       bookId: item.book.id,
       sellerId: item.book.sellerId,
       priceCents: item.book.salePriceCents ?? item.book.priceCents,
     }));
 
-    const orderPayload = {
-    totalCents,
-    currency: PAYSTACK_CURRENCY.toLowerCase(),
-    items: {
-      deleteMany: {},
-      create: orderItems,
-    },
-    };
-
-    if (order) {
-    order = await db.order.update({
-      where: { id: order.id },
-      data: orderPayload,
-    });
-    } else {
-    order = await db.order.create({
+    // Every Paystack payment attempt needs its own reference. Reusing a pending
+    // order's reference causes Paystack to reject the transaction as a duplicate.
+    const order = await db.order.create({
       data: {
         userId: user.id,
         status: OrderStatus.PENDING,
@@ -74,17 +54,12 @@ export async function POST() {
         items: { create: orderItems },
       },
     });
-    }
 
-    const reference =
-    order.paystackReference ?? paystackReferenceForOrder(order.id);
-
-    if (!order.paystackReference) {
-    order = await db.order.update({
+    const reference = paystackReferenceForOrder(order.id);
+    await db.order.update({
       where: { id: order.id },
       data: { paystackReference: reference },
     });
-    }
 
     const payment = await initializePaystackTransaction({
       email: user.email,
@@ -102,7 +77,7 @@ export async function POST() {
     return NextResponse.json({
       url: payment.authorization_url,
       reference,
-      reused: Boolean(order.paystackReference),
+      reused: false,
     });
   } catch (error) {
     console.error("[CHECKOUT FAILED]", error);

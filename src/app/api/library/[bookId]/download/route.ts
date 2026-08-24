@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getBlobUrl, openPrivateFileStream, privateFileExists } from "@/lib/storage";
 
@@ -7,7 +7,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ bookId: string }> }
 ) {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { bookId } = await params;

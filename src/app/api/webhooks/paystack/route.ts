@@ -115,6 +115,9 @@ export async function POST(req: Request) {
     console.log("[ORDER FULFILLED]", { orderId: order.id });
   } catch (err) {
     console.error("[FULFILLMENT FAILED]", err);
+    // Remove the idempotency lock so Paystack can retry delivery and grant access.
+    await db.paystackEvent.delete({ where: { id: eventId } }).catch(() => {});
+    return NextResponse.json({ error: "Fulfillment failed; retry requested" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
