@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/utils";
 import { SubmitBookButton } from "@/components/seller/submit-book-button";
 import { PayoutAccountForm } from "@/components/seller/payout-account-form";
 import { getSellerSettlementSummary } from "@/lib/settlements";
+import { decryptAccountNumber } from "@/lib/payout-account";
 
 export default async function SellerDashboardPage() {
   const user = await getAuthUser();
@@ -90,7 +91,7 @@ export default async function SellerDashboardPage() {
         <GlassPanel className="flex items-center gap-4 p-6"><TrendingUp className="h-10 w-10 text-blue-400" /><div><p className="text-sm text-zinc-500">This month</p><p className="text-2xl font-bold text-white">{formatPrice(salesThisMonth._sum.sellerEarningsCents ?? 0)}</p></div></GlassPanel>
       </div>
 
-      {user.sellerProfile && <div className="mb-8"><PayoutAccountForm account={user.sellerProfile} /></div>}
+      {user.sellerProfile && <div className="mb-8"><PayoutAccountForm account={{ ...user.sellerProfile, accountNumber: decryptAccountNumber(user.sellerProfile.accountNumber) }} /></div>}
 
       {user.sellerProfile && <div className="mb-10 grid gap-6 lg:grid-cols-2"><GlassPanel className="p-6"><h2 className="text-lg font-semibold text-white">Recent sales</h2><div className="mt-4 space-y-3">{recentSales.length ? recentSales.map((sale) => <div key={sale.id} className="flex justify-between border-b border-white/5 pb-3 text-sm"><div><p className="text-zinc-200">{sale.book.title}</p><p className="text-zinc-500">{sale.order.createdAt.toLocaleDateString()}</p></div><p className="font-medium text-green-300">{formatPrice(sale.sellerEarningsCents)}</p></div>) : <p className="text-sm text-zinc-500">Sales will appear here after a customer pays.</p>}</div></GlassPanel><GlassPanel className="p-6"><h2 className="text-lg font-semibold text-white">Settlement history</h2><div className="mt-4 space-y-3">{payouts.length ? payouts.map((payout) => <div key={payout.id} className="flex justify-between border-b border-white/5 pb-3 text-sm"><div><p className="text-zinc-200">{payout.status.replaceAll("_", " ")}</p><p className="text-zinc-500">{payout.createdAt.toLocaleDateString()}</p></div><p className="font-medium text-blue-300">{formatPrice(payout.amountCents)}</p></div>) : <p className="text-sm text-zinc-500">No settlements have been issued yet.</p>}</div></GlassPanel></div>}
 

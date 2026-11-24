@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createTransferRecipient } from "@/lib/paystack";
+import { encryptAccountNumber } from "@/lib/payout-account";
 
 const accountSchema = z.object({
   bankName: z.string().trim().min(2).max(100),
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     const recipientCode = await createTransferRecipient({ name: account.accountName, accountNumber: account.accountNumber, bankCode: account.bankCode });
     await db.sellerProfile.update({
       where: { id: user.sellerProfile.id },
-      data: { ...account, transferRecipientCode: recipientCode },
+      data: { ...account, accountNumber: encryptAccountNumber(account.accountNumber), transferRecipientCode: recipientCode },
     });
     return NextResponse.json({ ok: true });
   } catch (err) {

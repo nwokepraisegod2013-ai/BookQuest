@@ -9,6 +9,7 @@ import { AdminBookActions } from "@/components/admin/book-actions";
 import { SellerVerifyButton } from "@/components/admin/seller-verify-button";
 import { PaySellerButton } from "@/components/admin/pay-seller-button";
 import { getSellerSettlementSummary } from "@/lib/settlements";
+import { decryptAccountNumber } from "@/lib/payout-account";
 
 export default async function AdminPage() {
   const user = await getAuthUser();
@@ -110,7 +111,7 @@ export default async function AdminPage() {
                       </Link>
                     </td>
                     <td className="py-2">{s.user.email}</td>
-                    <td className="py-2">{s.accountNumber ? `${s.bankName ?? "Bank"} · ${s.accountNumber}` : "Not set"}</td>
+                    <td className="py-2">{s.accountNumber ? `${s.bankName ?? "Bank"} · ${decryptAccountNumber(s.accountNumber)}` : "Not set"}</td>
                     <td className="py-2 text-green-300">{formatPrice(settlement?.availableCents ?? 0)}</td>
                     <td className="py-2">{s.verified ? "Yes" : "No"}</td>
                     <td className="py-2">
