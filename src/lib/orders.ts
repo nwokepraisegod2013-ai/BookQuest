@@ -42,7 +42,7 @@ export async function fulfillOrder(orderId: string) {
   await db.$transaction(async (tx) => {
     await tx.order.update({
       where: { id: order.id },
-      data: { status: OrderStatus.PAID },
+      data: { status: OrderStatus.PAID, paidAt: new Date() },
     });
 
     for (const item of feeAllocation) {

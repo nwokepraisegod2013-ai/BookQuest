@@ -62,6 +62,25 @@ export async function POST(req: Request) {
     },
   });
 
+  if (event.event === "transfer.success") {
+    await db.payout.updateMany({
+      where: { reference },
+      data: { status: "PAID", processedAt: new Date() },
+    });
+    return NextResponse.json({ received: true });
+  }
+
+  if (event.event === "transfer.failed" || event.event === "transfer.reversed") {
+    const payout = await db.payout.findFirst({ where: { reference } });
+    if (payout) {
+      await db.$transaction(async (tx) => {
+        await tx.orderItem.updateMany({ where: { payoutId: payout.id }, data: { payoutId: null } });
+        await tx.payout.update({ where: { id: payout.id }, data: { status: "FAILED", failureReason: event.event, processedAt: new Date() } });
+      });
+    }
+    return NextResponse.json({ received: true });
+  }
+
   /**
    * =========================
    * 3. FILTER ONLY SUCCESS

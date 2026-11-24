@@ -62,6 +62,11 @@ model SellerProfile {
   verified       Boolean  @default(false)
   commissionRate Float    @default(15)
   subaccountCode String?
+  bankName       String?
+  bankCode       String?
+  accountName    String?
+  accountNumber  String?
+  transferRecipientCode String?
   books          Book[]
   payouts        Payout[]
   createdAt      DateTime @default(now())
@@ -144,6 +149,7 @@ model Order {
   totalCents      Int
   currency        String      @default("ngn")
   items           OrderItem[]
+  paidAt          DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
@@ -160,6 +166,10 @@ model OrderItem {
   priceCents   Int
   platformFeeCents Int @default(0)
   sellerEarningsCents Int @default(0)
+  payoutId     String?
+  payout       Payout? @relation(fields: [payoutId], references: [id])
+
+  @@index([sellerId, payoutId])
 }
 
 model LibraryEntry {
@@ -196,9 +206,15 @@ model Payout {
   currency    String       @default("ngn")
   status      PayoutStatus @default(PENDING)
   reference   String?
+  transferCode String?
+  failureReason String?
   periodStart DateTime
   periodEnd   DateTime
+  processedAt DateTime?
   createdAt   DateTime     @default(now())
+  items       OrderItem[]
+
+  @@index([sellerId, status])
 }
 
 model StripeEvent {

@@ -18,3 +18,4 @@ export * from "./paystack/transactions";
 export * from "./paystack/subaccount";
 export * from "./paystack/refund";
 export * from "./paystack/webhook";
+export * from "./paystack/transfers";

@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
-import { syncUserFromClerk } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { GlassPanel } from "@/components/ui/glass";
 import { formatPrice } from "@/lib/utils";
 import { AdminBookActions } from "@/components/admin/book-actions";
 import { SellerVerifyButton } from "@/components/admin/seller-verify-button";
+import { PaySellerButton } from "@/components/admin/pay-seller-button";
+import { getSellerSettlementSummary } from "@/lib/settlements";
 
 export default async function AdminPage() {
-  const user = await syncUserFromClerk();
+  const user = await getAuthUser();
   if (!user || user.role !== Role.ADMIN) redirect("/");
 
-  const [orderCount, revenue, pendingBooks, sellers, recentOrders] = await Promise.all([
+  const [orderCount, revenue, pendingBooks, sellers, recentOrders, settings] = await Promise.all([
     db.order.count({ where: { status: "PAID" } }),
     db.order.aggregate({
       where: { status: "PAID" },
@@ -33,7 +35,10 @@ export default async function AdminPage() {
       orderBy: { createdAt: "desc" },
       include: { user: { select: { email: true } }, items: { include: { book: true } } },
     }),
+    db.platformSettings.findUnique({ where: { id: "default" } }),
   ]);
+  const sellerSettlements = await Promise.all(sellers.map(async (seller) => ({ sellerId: seller.id, ...(await getSellerSettlementSummary(seller.id)) })));
+  const settlementBySeller = new Map(sellerSettlements.map((summary) => [summary.sellerId, summary]));
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -86,12 +91,18 @@ export default async function AdminPage() {
                 <tr>
                   <th className="pb-2">Store</th>
                   <th className="pb-2">Owner</th>
+                  <th className="pb-2">Payout account</th>
+                  <th className="pb-2">Eligible</th>
                   <th className="pb-2">Verified</th>
                   <th className="pb-2">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {sellers.map((s) => (
+                  (() => {
+                    const settlement = settlementBySeller.get(s.id);
+                    const canPay = Boolean(s.transferRecipientCode) && (settlement?.availableCents ?? 0) >= (settings?.minPayoutCents ?? 500000);
+                    return (
                   <tr key={s.id} className="border-t border-white/5 text-zinc-300">
                     <td className="py-2">
                       <Link href={`/store/${s.storeSlug}`} className="text-blue-400 hover:underline">
@@ -99,11 +110,15 @@ export default async function AdminPage() {
                       </Link>
                     </td>
                     <td className="py-2">{s.user.email}</td>
+                    <td className="py-2">{s.accountNumber ? `${s.bankName ?? "Bank"} · ${s.accountNumber}` : "Not set"}</td>
+                    <td className="py-2 text-green-300">{formatPrice(settlement?.availableCents ?? 0)}</td>
                     <td className="py-2">{s.verified ? "Yes" : "No"}</td>
                     <td className="py-2">
-                      <SellerVerifyButton sellerId={s.id} verified={s.verified} />
+                      <div className="flex flex-wrap gap-2"><SellerVerifyButton sellerId={s.id} verified={s.verified} /><PaySellerButton sellerId={s.id} disabled={!canPay} /></div>
                     </td>
                   </tr>
+                    );
+                  })()
                 ))}
               </tbody>
             </table>

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus, BookOpen, DollarSign } from "lucide-react";
+import { Plus, BookOpen, DollarSign, WalletCards, Clock3, TrendingUp } from "lucide-react";
 import { Role } from "@prisma/client";
 import { getAuthUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { GlassPanel, GlassButton, GlassBadge } from "@/components/ui/glass";
 import { formatPrice } from "@/lib/utils";
 import { SubmitBookButton } from "@/components/seller/submit-book-button";
+import { PayoutAccountForm } from "@/components/seller/payout-account-form";
+import { getSellerSettlementSummary } from "@/lib/settlements";
 
 export default async function SellerDashboardPage() {
   const user = await getAuthUser();
@@ -25,12 +27,16 @@ export default async function SellerDashboardPage() {
       })
     : [];
 
-  const earnings = sellerId
-    ? await db.orderItem.aggregate({
-        where: { sellerId, order: { status: "PAID" } },
-        _sum: { sellerEarningsCents: true },
-      })
-    : { _sum: { sellerEarningsCents: 0 } };
+  const monthStart = new Date();
+  monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const [settlement, salesThisMonth, recentSales, payouts] = sellerId
+    ? await Promise.all([
+        getSellerSettlementSummary(sellerId),
+        db.orderItem.aggregate({ where: { sellerId, order: { status: "PAID", createdAt: { gte: monthStart } } }, _sum: { sellerEarningsCents: true } }),
+        db.orderItem.findMany({ where: { sellerId, order: { status: "PAID" } }, include: { book: { select: { title: true } }, order: { select: { createdAt: true } } }, orderBy: { order: { createdAt: "desc" } }, take: 5 }),
+        db.payout.findMany({ where: { sellerId }, orderBy: { createdAt: "desc" }, take: 5 }),
+      ])
+    : [{ availableCents: 0, onHoldCents: 0, paidCents: 0, cutoff: new Date() }, { _sum: { sellerEarningsCents: 0 } }, [], []] as const;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -63,7 +69,7 @@ export default async function SellerDashboardPage() {
         )}
       </div>
 
-      <div className="mb-8 grid gap-4 md:grid-cols-3">
+      <div className="mb-8 grid gap-4 md:grid-cols-4">
         <GlassPanel className="flex items-center gap-4 p-6">
           <BookOpen className="h-10 w-10 text-blue-400" />
           <div>
@@ -72,15 +78,21 @@ export default async function SellerDashboardPage() {
           </div>
         </GlassPanel>
         <GlassPanel className="flex items-center gap-4 p-6">
-          <DollarSign className="h-10 w-10 text-green-400" />
+          <WalletCards className="h-10 w-10 text-green-400" />
           <div>
-            <p className="text-sm text-zinc-500">Total earnings</p>
+            <p className="text-sm text-zinc-500">Available to settle</p>
             <p className="text-2xl font-bold text-white">
-              {formatPrice(earnings._sum.sellerEarningsCents ?? 0)}
+              {formatPrice(settlement.availableCents)}
             </p>
           </div>
         </GlassPanel>
+        <GlassPanel className="flex items-center gap-4 p-6"><Clock3 className="h-10 w-10 text-amber-400" /><div><p className="text-sm text-zinc-500">In 7-day hold</p><p className="text-2xl font-bold text-white">{formatPrice(settlement.onHoldCents)}</p></div></GlassPanel>
+        <GlassPanel className="flex items-center gap-4 p-6"><TrendingUp className="h-10 w-10 text-blue-400" /><div><p className="text-sm text-zinc-500">This month</p><p className="text-2xl font-bold text-white">{formatPrice(salesThisMonth._sum.sellerEarningsCents ?? 0)}</p></div></GlassPanel>
       </div>
+
+      {user.sellerProfile && <div className="mb-8"><PayoutAccountForm account={user.sellerProfile} /></div>}
+
+      {user.sellerProfile && <div className="mb-10 grid gap-6 lg:grid-cols-2"><GlassPanel className="p-6"><h2 className="text-lg font-semibold text-white">Recent sales</h2><div className="mt-4 space-y-3">{recentSales.length ? recentSales.map((sale) => <div key={sale.id} className="flex justify-between border-b border-white/5 pb-3 text-sm"><div><p className="text-zinc-200">{sale.book.title}</p><p className="text-zinc-500">{sale.order.createdAt.toLocaleDateString()}</p></div><p className="font-medium text-green-300">{formatPrice(sale.sellerEarningsCents)}</p></div>) : <p className="text-sm text-zinc-500">Sales will appear here after a customer pays.</p>}</div></GlassPanel><GlassPanel className="p-6"><h2 className="text-lg font-semibold text-white">Settlement history</h2><div className="mt-4 space-y-3">{payouts.length ? payouts.map((payout) => <div key={payout.id} className="flex justify-between border-b border-white/5 pb-3 text-sm"><div><p className="text-zinc-200">{payout.status.replaceAll("_", " ")}</p><p className="text-zinc-500">{payout.createdAt.toLocaleDateString()}</p></div><p className="font-medium text-blue-300">{formatPrice(payout.amountCents)}</p></div>) : <p className="text-sm text-zinc-500">No settlements have been issued yet.</p>}</div></GlassPanel></div>}
 
       <h2 className="mb-4 text-xl font-semibold text-white">Your books</h2>
       {!user.sellerProfile && (
